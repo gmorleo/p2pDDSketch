@@ -1,0 +1,22 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/giuseppe/CLionProjects/p2pDDSketch/main.cpp
+iostream
+-
+igraph/igraph.h
+-
+cstring
+-
+random
+-
+map
+-
+chrono
+-
+
