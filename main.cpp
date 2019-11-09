@@ -29,8 +29,8 @@ const int DEFAULT_OFFSET = 1073741824; //2^31/2
 const int DEFAULT_BIN_LIMIT = 500;
 const float DEFAULT_ALPHA = 0.01;
 
-void StartTheClock();
-double StopTheClock();
+void startTheClock();
+double stopTheClock();
 void usage(char* cmd);
 igraph_t generateGeometricGraph(igraph_integer_t n, igraph_real_t radius);
 igraph_t generateBarabasiAlbertGraph(igraph_integer_t n, igraph_real_t power, igraph_integer_t m, igraph_real_t A);
@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
     string      name_file = "../normal_mean_2_stdev_3.csv";
     uint32_t    domainSize = 1048575;       // number of possible distinct items
     int         graphType = 2;              // graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
-    int         peers = 1000;               // number of peers
+    int         peers = 1000;                 // number of peers
     int         fanOut = 5;                 // fan-out of peers
     double      convThreshold = 0.0001;     // local convergence tolerance
     int         convLimit = 3;              // number of consecutive rounds in which a peer must locally converge
@@ -88,9 +88,9 @@ int main(int argc, char **argv) {
     double      delta = 0.04;
     double          elapsed;
     int             iterations;
+
+
     bool            autoseed = false;
-
-
     bool        outputOnFile = false;
     string      outputFilename;
     long        *peerLastItem;              // index of a peer last item
@@ -172,21 +172,21 @@ int main(int argc, char **argv) {
         } else if (strcmp(argv[i], "-al") == 0) {
             i++;
             if (i >= argc) {
-                cerr << "Missing number of precision for raster.\n";
+                cerr << "Missing number of accuracy for DDSketch.\n";
                 return -1;
             }
             alpha = stod(argv[i]);
         } else if (strcmp(argv[i], "-ofs") == 0) {
             i++;
             if (i >= argc) {
-                cerr << "Missing number of threshold for raster.\n";
+                cerr << "Missing number of offset for DDSketch.\n";
                 return -1;
             }
             offset = stoi(argv[i]);
         } else if (strcmp(argv[i], "-bl") == 0) {
             i++;
             if (i >= argc) {
-                cerr << "Missing number of min size for raster.\n";
+                cerr << "Missing number of bins limit for DDSketch.\n";
                 return -1;
             }
             bin_limit = stoi(argv[i]);
@@ -204,7 +204,6 @@ int main(int argc, char **argv) {
             return -1;
         }
     }
-
 
     /*** read dataset dimensions ***/
     ni = getDatasetSize(name_file);
@@ -290,13 +289,13 @@ int main(int argc, char **argv) {
     // seed igraph PRNG
     igraph_rng_seed(igraph_rng_default(), 42);
 
-    StartTheClock();
+    startTheClock();
     // generate a connected random graph
     graph = generateRandomGraph(params.graphType, params.peers);
 
-    double gengraphtime = StopTheClock();
+    double graphgentime = stopTheClock();
     if (!outputOnFile) {
-        cout <<"Time (seconds) required to generate the random graph: " << gengraphtime << "\n";
+        cout <<"Time (seconds) required to generate the random graph: " << graphgentime << "\n";
     }
 
     // determine minimum and maximum vertex degree for the graph
@@ -314,11 +313,11 @@ int main(int argc, char **argv) {
     /*** Declaration of peer sketches ***/
     auto *dds = new DDS_type*[params.peers];
 
-    /*** Distribution compute simulation ***/
+    startTheClock();
+    /*** Distributed computation simulation ***/
     long start = 0;
     for(int peerID = 0; peerID < params.peers; peerID++){
-        //cout << "-----------------------------------------" << endl;
-        //cout << "PeerID = " << peerID << endl;
+
         dds[peerID] = DDS_Init(offset, bin_limit, alpha);
 
         for ( long i = start; i <= peerLastItem[peerID]; i++ ) {
@@ -329,29 +328,27 @@ int main(int argc, char **argv) {
         start = peerLastItem[peerID] + 1;
     }
 
-    // this is used to estimate the number of peers
-    // Peso per ogni peer, per la somma solo uno ha valore 1, gli altri hanno valore 0
+    double distributed_time = stopTheClock();
+    if (!outputOnFile) {
+        cout <<"Time (seconds) required to add all elements for all the peers: " << distributed_time << "\n";
+    }
+
+    // Weight for sum only one peer is setted to 1
     auto *dimestimate = new double[params.peers]();
     dimestimate[0] = 1;
 
-    // Peso per ogni peer, al passo precedente
+    // Weight at rount t-1
     auto *prevestimate = new double[params.peers]();
 
-    // Dimensioni del dataset posseduto da ogni peer
-    auto *datasetsizeestimate = new double[params.peers]();
-    datasetsizeestimate[0] = peerLastItem[0] + 1;
-    for(int i = 1; i < peers; i++)
-        datasetsizeestimate[i] = peerLastItem[i] - peerLastItem[i-1];
-
-    // Peer che ancora non sono andati a convergenza
+    // Number of peers that have not reached convergence
     int Numberofconverged = params.peers;
 
-    // True o false in base se quel peer è andato a convergenza
+    // Converged peers
     auto *converged = new bool[params.peers]();
     for(int i = 0; i < params.peers; i++)
         converged[i] = false;
 
-
+    // Local convergence tolerance
     auto *convRounds = new int[params.peers]();
 
     int rounds = 0;
@@ -360,6 +357,7 @@ int main(int argc, char **argv) {
         cout <<"\nStarting distributed agglomeration merge..." << endl;
     }
 
+    startTheClock();
     /*** Merge information about agglomeration ***/
     while( (params.roundsToExecute < 0 && Numberofconverged) || params.roundsToExecute > 0) {
 
@@ -384,42 +382,34 @@ int main(int argc, char **argv) {
                 igraph_integer_t edgeID;
                 igraph_get_eid(&graph, &edgeID, peerID, neighborID, IGRAPH_UNDIRECTED, 1);
 
-                DDS_mergeGossip(dds[peerID], dds[neighborID]);
+                //DDS_mergeGossip(dds[peerID], dds[neighborID]);
+                DDS_merge(dds[peerID], dds[neighborID]);
+                DDS_replaceBinMap(dds[peerID], dds[neighborID]);
 
-                // Invio il peso/2 al mio vicino e una copia a me stesso e ne faccio la somma, dato che simulo e la
-                // comunicazione è bidirezionale copio il risultato anche nel mio vicino
                 double mean = (dimestimate[peerID] + dimestimate[neighborID]) / 2;
                 dimestimate[peerID] = mean;
                 dimestimate[neighborID] = mean;
-
-                // Invio il mio valore/2 al mio vicino e una copia a me stesso e ne faccio la somma, dato che simulo e la
-                // comunicazione è bidirezionale copio il risultato anche nel mio vicino
-                double mean_size = (datasetsizeestimate[peerID] + datasetsizeestimate[neighborID]) / 2;
-                datasetsizeestimate[peerID] = mean_size;
-                datasetsizeestimate[neighborID] = mean_size;
             }
 
             igraph_vector_destroy(&neighbors);
         }
 
-        // check local convergence
-        // Se è < 0 vuol dire che va fino a convergenza e quindi bisogna testare la condizione
+        // check local convergence, if roundsToExecute is less than 0, the algorithm will be running until convergence
         if (params.roundsToExecute < 0) {
 
             for(int peerID = 0; peerID < params.peers; peerID++){
 
-                // Se sono handato a convergenza esco
                 if(converged[peerID])
                     continue;
 
-                // Verifico se il peso che avevo prima meno quello nuovo e vedo se è minore della soglia, in quel caso assegno true altrimenti false
+                // Check local convergence
                 bool dimestimateconv;
                 if(prevestimate[peerID])
                     dimestimateconv = fabs((prevestimate[peerID] - dimestimate[peerID]) / prevestimate[peerID]) < params.convThreshold;
                 else
                     dimestimateconv = false;
 
-                // Se c'è convergenza aumento i round da quanto quel peer è andato a convergenza
+                // Increase rounds of convergence
                 if(dimestimateconv)
                     convRounds[peerID]++;
                 else
@@ -427,11 +417,10 @@ int main(int argc, char **argv) {
 
                 //printf ("PeerID %d, round %d, convRound %d\n", peerID, rounds, convRounds[peerID]);
 
-                // Setto su true al convergenza del peer se è andato a convergenza da più di un tot di round
+                // If a peer reaches convergence, decrease by one the numberofconverged
                 converged[peerID] = (convRounds[peerID] >= params.convLimit);
                 if(converged[peerID]){
                     //printf("peer %d rounds before convergence: %d\n", peerID, rounds + 1);
-                    //se quel peer è andato a convergenza lo decremento di uno
                     Numberofconverged --;
                 }
             }
@@ -440,9 +429,18 @@ int main(int argc, char **argv) {
         cerr << "\r Active peers: " << Numberofconverged << " - Rounds: " << rounds << "          " << endl;
         params.roundsToExecute--;
     }
+    double comunication_time = stopTheClock();
+    if (!outputOnFile) {
+        cout <<"Time (seconds) required to reach convergence: " << comunication_time << "\n";
+    }
 
-    cout << "La somma è: " << datasetsizeestimate[0]/dimestimate[0] << endl;
-    cout << "N elementi è: " << dds[0]->n/dimestimate[0] << endl;
+    cout << "We are: " << 1/dimestimate[0] << endl;
+
+    /*** Distributed computation simulation ***/
+    // Finalize the sum by dividing each value by dimestimate[peerID]
+    for(int peerID = 0; peerID < params.peers; peerID++){
+        DDS_finalizeGossip(dds[peerID], dimestimate[peerID]);
+    }
 
     // determine the 0.7 quantile
     float q = 0.7;
@@ -464,16 +462,29 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-void StartTheClock(){
+/**
+ * @brief                   This function sets the start time
+ */
+void startTheClock(){
     t1 = high_resolution_clock::now();
 }
 
-double StopTheClock() {
+/**
+ * @brief                   This function returns the time between the start time and the end time
+ * @return                  Total time between two times
+ */
+double stopTheClock() {
     t2 = high_resolution_clock::now();
     duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
     return time_span.count();
 }
 
+/**
+ * @brief                   This function generates a connetected random graph using the geometric model
+ * @param n                 The number of vertices in the graph
+ * @param radius            Graph radius
+ * @return                  Connected random graph using the geometric model
+ */
 igraph_t generateGeometricGraph(igraph_integer_t n, igraph_real_t radius)
 {
     igraph_t G_graph;
@@ -493,13 +504,16 @@ igraph_t generateGeometricGraph(igraph_integer_t n, igraph_real_t radius)
     return G_graph;
 }
 
+/**
+ * @brief                   This function generates a connected random graph using the Barabasi-Albert model
+ * @param n                 The number of vertices in the graph
+ * @param power             Power of the preferential attachment. The probability that a vertex is cited is proportional to d^power+A, where d is its degree, power and A are given by arguments. In the classic preferential attachment model power=1
+ * @param m                 m = number of outgoing edges generated for each vertex
+ * @param A                 A = The probability that a vertex is cited is proportional to d^power+A, where d is its degree, power and A are given by argument
+ * @return                  Connected random graph using the Barabasi-Albert model
+ */
 igraph_t generateBarabasiAlbertGraph(igraph_integer_t n, igraph_real_t power, igraph_integer_t m, igraph_real_t A)
 {
-
-    // n = The number of vertices in the graph
-    // power = Power of the preferential attachment. The probability that a vertex is cited is proportional to d^power+A, where d is its degree, power and A are given by arguments. In the classic preferential attachment model power=1
-    // m = number of outgoing edges generated for each vertex
-    // A = The probability that a vertex is cited is proportional to d^power+A, where d is its degree, power and A are given by arguments
 
     igraph_t BA_graph;
     igraph_bool_t connected;
@@ -537,11 +551,15 @@ igraph_t generateBarabasiAlbertGraph(igraph_integer_t n, igraph_real_t power, ig
     return BA_graph;
 }
 
+/**
+ * @brief                   This function generates a connected random graph using the Erdos-Renyi model
+ * @param n                 The number of vertices in the graph
+ * @param type              IGRAPH_ERDOS_RENYI_GNM G(n,m) graph, m edges are selected uniformly randomly in a graph with n vertices\n IGRAPH_ERDOS_RENYI_GNP G(n,p) graph, every possible edge is included in the graph with probability p
+ * @param param
+ * @return                  Connected random graph using the Erdos-Renyi model
+ */
 igraph_t generateErdosRenyiGraph(igraph_integer_t n, igraph_erdos_renyi_t type, igraph_real_t param)
 {
-    // n = The number of vertices in the graph
-    // type = IGRAPH_ERDOS_RENYI_GNM G(n,m) graph, m edges are selected uniformly randomly in a graph with n vertices.
-    //      = IGRAPH_ERDOS_RENYI_GNP G(n,p) graph, every possible edge is included in the graph with probability p
 
     igraph_t ER_graph;
     igraph_bool_t connected;
@@ -560,11 +578,14 @@ igraph_t generateErdosRenyiGraph(igraph_integer_t n, igraph_erdos_renyi_t type, 
     return ER_graph;
 }
 
+/**
+ * @brief                   This function generates a connected regular random graph
+ * @param n                 The number of vertices in the graph
+ * @param k                 The degree of each vertex in an undirected graph. For undirected graphs, at least one of k and the number of vertices must be even.
+ * @return                  Connected regular random graph
+ */
 igraph_t generateRegularGraph(igraph_integer_t n, igraph_integer_t k)
 {
-    // n = The number of vertices in the graph
-    // k = The degree of each vertex in an undirected graph. For undirected graphs, at least one of k and the number of vertices must be even.
-
 
     igraph_t R_graph;
     igraph_bool_t connected;
@@ -583,6 +604,12 @@ igraph_t generateRegularGraph(igraph_integer_t n, igraph_integer_t k)
     return R_graph;
 }
 
+/**
+ * @brief                   This function generate a random graph
+ * @param type              Graph distribution:\n 1 geometric\n 2 Barabasi-Albert\n 3 Erdos-Renyi\n 4 regular (clique)
+ * @param n                 The number of vertices in the graph
+ * @return                  Random graph
+ */
 igraph_t generateRandomGraph(int type, int n)
 {
     igraph_t random_graph;
@@ -610,6 +637,10 @@ igraph_t generateRandomGraph(int type, int n)
 
 }
 
+/**
+ * \brief                   This function prints the name of graph distribution.
+ * @param type              Graph distribution:\n 1 geometric\n 2 Barabasi-Albert\n 3 Erdos-Renyi\n 4 regular (clique)
+ */
 void printGraphType(int type)
 {
 
@@ -633,6 +664,11 @@ void printGraphType(int type)
 
 }
 
+/**
+ * \brief                   This function computes the dimension of the dataset
+ * @param name_file         Name of dataset
+ * @return                  Return the number of element in the dataset(row)
+ */
 long getDatasetSize(const string &name_file) {
 
     ifstream inputFile(name_file);
@@ -642,10 +678,16 @@ long getDatasetSize(const string &name_file) {
 
     while (getline(inputFile, line))
         rows++;
-    ;
+
     return rows;
 }
 
+/**
+ * \brief                   This function loads the dataset into an array
+ * @param name_file         Name of dataset
+ * @param dataset           Array
+ * @return                  An array containing the whole dataset
+ */
 int loadDataset(const string &name_file, double *dataset) {
 
     ifstream inputFile(name_file);
@@ -659,8 +701,4 @@ int loadDataset(const string &name_file, double *dataset) {
     }
 
     return 0;
-}
-
-void send() {
-
 }

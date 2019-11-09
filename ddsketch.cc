@@ -12,7 +12,6 @@
  *********************************************************************/
 /// \file
 
-#include <fstream>
 #include "ddsketch.h"
 
 
@@ -175,8 +174,6 @@ int DDS_Delete(DDS_type *dds, double item)
 
 }
 
-
-
 int DDS_expand(DDS_type *dds)
 {
     // In order to reduce the bucket's number, we need to increase the range of the bucket's index.
@@ -222,24 +219,8 @@ int DDS_SumBins(DDS_type *dds) {
     for (auto & bin : (*(dds->bins))) {
         sum += bin.second;
     }
-    cout << "Sum = " << sum << endl;
 
-    return 0;
-}
-
-int DDS_PrintCSV(DDS_type *dds) {
-
-    ofstream file;
-    file.open("bins.csv");
-
-    for (auto& b: (*dds->bins)) {
-        file << b.first << ", ";
-        file << b.second << ",\n";
-    }
-
-    file.close();
-
-    return 0;
+    return sum;
 }
 
 int DDS_PrintCSV(string name, map<int,double> *bins) {
@@ -261,13 +242,16 @@ int DDS_PrintCSV(string name, map<int,double> *bins) {
 int DDS_CheckAll(DDS_type *dds, double item) {
 
     int key = DDS_GetKey(dds, item);
+    bool check = true;
 
     auto it = dds->bins->find(key);
     if (it == dds->bins->end()){
         cout << "Not found key = " << key << endl;
         DDS_getInterval(dds, key, dds->gamma);
+        check = false;
     }
 
+    return check;
 }
 
 double DDS_GetQuantile(DDS_type *dds, float q)
@@ -295,31 +279,9 @@ double DDS_GetQuantile(DDS_type *dds, float q)
 
 void DDS_merge(DDS_type *dds1, DDS_type *dds2)
 {
-   
+
     // Merge function merges the bins in dds1 with the bins of dds2
     // dds1 is the result of the merge operation
-    for (auto received_bin : (*(dds2->bins))) {
-        (*(dds1->bins))[received_bin.first] += received_bin.second;
-        dds1->n += received_bin.second;
-    }
-
-    cout << "Size after merge = " << DDS_Size(dds1) << endl;
-    
-    // Check if the new bin size is greater than bin limit
-    if (DDS_Size(dds1) > dds1->bin_limit){
-        // If the bin size is more then the bin limit, we need to increase alpha and adapt all the existing buckets with
-        // the new alpha
-        DDS_expandProportional(dds1);
-    }
-}
-
-bool DDS_isMergeable(DDS_type *dds1, DDS_type *dds2) {
-    return abs(dds1->alpha - dds2->alpha) <= 0.005;
-}
-
-int DDS_mergeGossip(DDS_type *dds1, DDS_type *dds2) {
-
-    // Merge function merges the bins in dds1 with the bins of dds2
 
     // Check if the bins have the same alpha
     while (!DDS_isMergeable(dds1,dds2)){
@@ -330,39 +292,30 @@ int DDS_mergeGossip(DDS_type *dds1, DDS_type *dds2) {
         }
     }
 
-    // Create new bins map
-    map<int,double> *new_bins = NULL;
-    new_bins = new map<int, double>();
-    if(!new_bins){
-        fprintf(stdout,"Memory allocation of a new sketch map failed\n");
-        return -1;
+    // Mean
+    for ( auto & bin  : (*dds1->bins)) {
+        bin.second = bin.second/2;
     }
 
-    for ( auto & bin  : (*dds1->bins)) {
-        (*new_bins)[bin.first] += bin.second/2;
-    }
+    // Mean
     for ( auto & bin  : (*dds2->bins)) {
-        (*new_bins)[bin.first] += bin.second/2;
+        (*(dds1->bins))[bin.first] += bin.second/2;
     }
 
     // Check if the new bin size is greater than bin limit
-    if ( new_bins->size() > dds1->bin_limit ) {
-        DDS_expandProportional(dds1, dds2, new_bins);
+    if ( dds1->bins->size() > dds1->bin_limit ) {
+        DDS_expandProportional(dds1);
     }
 
-    dds1->bins->clear();
-    dds2->bins->clear();
-    dds1->bins->insert(new_bins->begin(), new_bins->end());
-    dds2->bins->insert(new_bins->begin(), new_bins->end());
-
+    // Mean of n
     dds1->n = (dds1->n/2 + dds2->n/2);
-    dds2->n = dds1->n;
-
-    new_bins->clear();
-    delete new_bins;
-
     //cout << "Size after merge = " << DDS_Size(dds1) << endl;
-    return 0;
+}
+
+bool DDS_isMergeable(DDS_type *dds1, DDS_type *dds2) {
+
+    return abs(dds1->alpha - dds2->alpha) <= 0.005;
+
 }
 
 DDS_interval *DDS_getInterval(DDS_type *dds, int i, float gamma) {
@@ -396,22 +349,27 @@ DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamm
     //cout << "old " << old_interval->min << " - " << old_interval->max << endl;
     //cout << "new " << new_interval->min << " - " << new_interval->max << endl;
 
+    // If the old max is greater than the new max, a portion of elements must be distributed in the next bin
     if ( old_interval->max > new_interval->max) {
         split->next = abs((old_interval->max-new_interval->max)/old_interval->lenght);
     }
+
+    // If the old min is fewer than the new min, a portion of elements must be distributed in the precedent bin
     if ( old_interval->min < new_interval->min ) {
         split->precedent = abs((new_interval->min-old_interval->min)/old_interval->lenght);
     }
 
-    //cout << "prec " << split->precedent << " next " << split->next << endl;
-
+    // Saturation
     if ( split->next > 1 ) {
         split->next = 1;
     }
 
+    // Saturation
     if ( split->precedent > 1 ) {
         split->precedent = 1;
     }
+
+    //cout << "prec " << split->precedent << " next " << split->next << endl;
 
     delete new_interval;
     delete old_interval;
@@ -448,14 +406,19 @@ int DDS_expandProportional(DDS_type *dds){
         key = DDS_GetKey(dds, item, new_ln_gamma);
         split = DDS_getSplitInterval(dds, bin.first, key, dds->gamma, new_gamma);
 
+        // Element in precedent bin
         temp = floor(bin.second * split->precedent);
         if ( temp != 0 ) {
             (*new_bins)[key - 1] += temp;
         }
+
+        // Elementi in next bin
         temp = floor(bin.second * split->next);
         if ( temp != 0 ) {
             (*new_bins)[key + 1] += temp;
         }
+
+        // Elementi in current bin
         temp = bin.second - floor(bin.second * split->precedent) - floor(bin.second * split->next);
         if ( temp != 0 ) {
             (*new_bins)[key] += temp;
@@ -477,77 +440,25 @@ int DDS_expandProportional(DDS_type *dds){
     return 0;
 }
 
-int DDS_expandProportional(DDS_type *dds1, DDS_type *dds2, map<int,double> *bins){
+int DDS_finalizeGossip(DDS_type *dds, double weight) {
 
-    // In order to reduce the bucket's number, we need to increase the range of the bucket's index.
-    // We compute the new values of gamma and ln_gamma according the new alpha.
-    dds1->alpha += 0.01;
-    dds2->alpha += 0.01;
-    float new_gamma = ((1 + dds1->alpha)/(1 - dds1->alpha));
-    float new_ln_gamma = log(new_gamma);
-    //cout << "New alpha = " << dds->alpha << endl;
-
-    DDS_split_interval *split = NULL;
-
-    double item;
-    double temp;
-    int key;
-
-    // Create new bins map
-    map<int,double> *new_bins = NULL;
-    new_bins = new map<int, double>();
-    if(!new_bins){
-        fprintf(stdout,"Memory allocation of a new sketch map failed\n");
-        return -1;
+    for(auto & bin: (*dds->bins)) {
+        bin.second = ceil(bin.second/weight);
     }
+    dds->n = dds->n/weight;
 
-    DDS_PrintCSV("prima.csv", bins);
+    return 0;
+}
 
-    int sum = 0;
-    for (auto & bin : (*bins)) {
-        //cout << "------------------------------------------------" << endl;
-        item = DDS_GetRank(dds1, bin.first);
-        key = DDS_GetKey(dds1, item, new_ln_gamma);
-        split = DDS_getSplitInterval(dds1, bin.first, key, dds1->gamma, new_gamma);
-        temp = bin.second * split->precedent;
-        sum += temp;
-        if ( temp != 0 ) {
-            (*new_bins)[key - 1] += temp;
-        }
-        temp = bin.second * split->next;
-        sum += temp;
-        if ( temp != 0 ) {
-            (*new_bins)[key + 1] += temp;
-        }
-        temp = bin.second - bin.second * split->precedent - bin.second * split->next;
-        sum += temp;
-        if ( temp != 0 ) {
-            (*new_bins)[key] += temp;
-        }
-    }
+int DDS_replaceBinMap(DDS_type *dds1, DDS_type *dds2) {
 
-    int sum2 = 0;
-    for ( auto & bin : (*new_bins)) {
-        sum2 += bin.second;
-    }
+    dds2->alpha = dds1->alpha;
+    dds2->gamma = dds1->gamma;
+    dds2->ln_gamma = dds2->ln_gamma;
+    dds2->n = dds2->n;
 
-    if ( (sum-sum2)>1) {
-        cout << "diversi " << endl;
-    }
-
-    // Replace old bins map with new bins map
-    bins->swap(*new_bins);
-    new_bins->clear();
-    delete new_bins;
-
-    DDS_PrintCSV("dopo.csv", bins);
-
-    //cout << "Size after expand = " << DDS_Size(dds) << endl;
-
-    dds1->gamma = new_gamma;
-    dds1->ln_gamma = new_ln_gamma;
-    dds2->gamma = new_gamma;
-    dds2->ln_gamma = new_ln_gamma;
+    dds2->bins->clear();
+    dds2->bins->insert(dds1->bins->begin(),dds1->bins->end());
 
     return 0;
 }
