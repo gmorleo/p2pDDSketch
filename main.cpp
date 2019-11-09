@@ -11,7 +11,7 @@ using namespace std;
 using namespace std::chrono;
 
 const int DEFAULT_OFFSET = 1073741824; //2^31/2
-const int DEFAULT_BIN_LIMIT = 5000;
+const int DEFAULT_BIN_LIMIT = 500;
 const float DEFAULT_ALPHA = 0.01;
 
 void StartTheClock();
@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
     long        ni;                         // points number
     long        *peerLastItem;              // index of a peer last item
     uint32_t    domainSize = 1048575;       // number of possible distinct items
-    int         peers = 10;                 // number of peers
+    int         peers = 1000;                 // number of peers
     int         fanOut = 5;                 // fan-out of peers
     int         graphType = 2;              // graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
     double      convThreshold = 0.0001;     // local convergence tolerance
@@ -311,8 +311,8 @@ int main(int argc, char **argv) {
     /*** Distribution compute simulation ***/
     long start = 0;
     for(int peerID = 0; peerID < params.peers; peerID++){
-        cout << "-----------------------------------------" << endl;
-        cout << "PeerID = " << peerID << endl;
+        //cout << "-----------------------------------------" << endl;
+        //cout << "PeerID = " << peerID << endl;
         dds[peerID] = DDS_Init(DEFAULT_OFFSET, DEFAULT_BIN_LIMIT, DEFAULT_ALPHA);
 
         for ( long i = start; i <= peerLastItem[peerID]; i++ ) {
@@ -387,14 +387,14 @@ int main(int argc, char **argv) {
 
                 // projection miei dati e vicini
                 //projectionMerge(projection[neighborID], projection[peerID]);
-                cout << "-----------------------------------------------" << endl;
-                cout << "PeerID N = " << dds[peerID]->n << " size " << DDS_Size(dds[peerID]) << endl;
+                //cout << "-----------------------------------------------" << endl;
+                //cout << "PeerID N = " << dds[peerID]->n << " size " << DDS_Size(dds[peerID]) << endl;
                 //cout << "NeighbornID N = " << dds[neighborID]->n << " size " << DDS_Size(dds[neighborID]) << endl;
                 //cout << "merge " << endl;
                 DDS_mergeGossip(dds[peerID], dds[neighborID]);
                 dds[neighborID]->n = dds[peerID]->n;
                 //dds[neighborID]->bins = dds[peerID]->bins;
-                cout << "PeerID N = " << dds[peerID]->n << " size " << DDS_Size(dds[peerID]) << endl;
+                //cout << "PeerID N = " << dds[peerID]->n << " size " << DDS_Size(dds[peerID]) << endl;
                 //cout << "NeighbornID N = " << dds[neighborID]->n << " size " << DDS_Size(dds[neighborID]) << endl;
 
                 // Invio il peso/2 al mio vicino e una copia a me stesso e ne faccio la somma, dato che simulo e la
@@ -408,7 +408,7 @@ int main(int argc, char **argv) {
                 double mean_size = (datasetsizeestimate[peerID] + datasetsizeestimate[neighborID]) / 2;
                 datasetsizeestimate[peerID] = mean_size;
                 datasetsizeestimate[neighborID] = mean_size;
-                cout << "Mean " << mean_size << endl;
+                //cout << "Mean " << mean_size << endl;
             }
 
             igraph_vector_destroy(&neighbors);

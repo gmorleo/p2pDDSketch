@@ -33,7 +33,7 @@ typedef struct DDS_type{
     /// this is not a required parameter; it is defined as log(gamma)
     float ln_gamma;
     /// this map implements the bins of DDSketch
-    map<int, int> *bins;
+    map<int, double> *bins;
     /// this parameter keeps track of the number of items added to the sketch
     double n;
 } DDS_type;
@@ -181,6 +181,8 @@ extern DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, flo
  * @return
  */
 extern int DDS_expandProportional(DDS_type *dds);
+
+extern int DDS_expandProportional(DDS_type *dds1, DDS_type *dds2, map<int,double> *bins);
 
 /**
  *
