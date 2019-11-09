@@ -1,3 +1,18 @@
+/********************************************************************
+ DDSketch
+
+ An algorithm for tracking quantiles in data streams
+
+ Charles Masson, Jee E. Rim, and Homin K. Lee. 2019. DDSketch: a fast and fully-mergeable quantile sketch with relative-error guarantees. Proc. VLDB Endow. 12, 12 (August 2019), 2195-2205. DOI: https://doi.org/10.14778/3352063.3352135
+
+ This implementation by
+ by Giuseppe Morleo
+ University of Salento, Italy
+
+ *********************************************************************/
+/// \file
+
+
 #include <iostream>
 #include <igraph/igraph.h>
 #include <cstring>
@@ -28,57 +43,59 @@ long getDatasetSize(const string &name_file);
 int loadDataset(const string &name_file, double *dataset);
 
 struct Params {
-    uint32_t    domainSize;     // limite
-    long        ni;            // points number of dataset
-    int         peers;          // numero peer
-    int         p_star;
-    string      outputFilename;     // Se voglio salvere tutto su file
-    double      convThreshold;      //
-    int         convLimit;          // fissato a 3, quando un peer arriva a convergenza controlla il mio valore attuale con il precedente per almeno 3 iterazioni
-    int         graphType;      //tipo grafo
-    int         fanOut;             // numero massimo vicini con cui comunico
-    int         roundsToExecute;       // round da eseguire senza aspettare la convergenza
-    double      delta;
-
-    int         offset;
-    float       alpha;
-    float       gamma;
-    float       ln_gamma;
-    int         bin_limit;
+    /// Number of points in the dataset
+    long        ni;
+    /// Name of dataset
     string      name_file;
+    /// Number of possible distinct items
+    uint32_t    domainSize;
+    /// Graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
+    int         graphType;
+    /// Number of peer in the net
+    int         peers;
+    /// Fan-out of peers
+    int         fanOut;
+    /// Threshold to check the peer's convergence
+    double      convThreshold;
+    /// Number of consecutive rounds in which a peer must locally converge
+    int         convLimit;
+    /// Fixed number of round to execute
+    int         roundsToExecute;
+    /// Output file to redirect stdout
+    string      outputFilename;
 };
 
 high_resolution_clock::time_point t1, t2;
 
 int main(int argc, char **argv) {
     /*** Default Parameters***/
+
     long        ni;                         // points number
-    long        *peerLastItem;              // index of a peer last item
+    string      name_file = "../normal_mean_2_stdev_3.csv";
     uint32_t    domainSize = 1048575;       // number of possible distinct items
-    int         peers = 1000;                 // number of peers
-    int         fanOut = 5;                 // fan-out of peers
     int         graphType = 2;              // graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
+    int         peers = 1000;               // number of peers
+    int         fanOut = 5;                 // fan-out of peers
     double      convThreshold = 0.0001;     // local convergence tolerance
     int         convLimit = 3;              // number of consecutive rounds in which a peer must locally converge
     int         roundsToExecute = -1;       // Se metto un numero esegue quello
+
+    float       alpha = DEFAULT_ALPHA;
+    int         offset = DEFAULT_OFFSET;
+    int         bin_limit = DEFAULT_BIN_LIMIT;
+
     int         p_star = -1;
     double      delta = 0.04;
-
-    int         offset = DEFAULT_OFFSET;
-    float       alpha = DEFAULT_ALPHA;
-    float       gamma = (1 + alpha)/(1-alpha);
-    float       ln_gamma = log(gamma);
-    int         bin_limit = DEFAULT_BIN_LIMIT;
-    string      name_file = "../normal_mean_2_stdev_3.csv";
-
-
     double          elapsed;
     int             iterations;
     bool            autoseed = false;
-    bool            outputOnFile = false;
-    string          outputFilename;
-    igraph_t        graph;
-    Params          params;
+
+
+    bool        outputOnFile = false;
+    string      outputFilename;
+    long        *peerLastItem;              // index of a peer last item
+    igraph_t    graph;
+    Params      params;
 
     /*** parse command-line parameters ***/
     for (int i = 1; i < argc; ++i) {
@@ -196,10 +213,10 @@ int main(int argc, char **argv) {
     loadDataset(name_file, dataset);
 
     /*** Compute last item for each peer***/
-    peerLastItem = new long[peers]();//(long *) calloc(peers, sizeof(long));
-    std::random_device rd; // obtain a random number from hardware
-    std::mt19937 eng(rd()); // seed the generator
-    std::uniform_real_distribution<> distr(-1, 1); // define the range
+    peerLastItem = new long[peers]();
+    std::random_device rd;                                   // obtain a random number from hardware
+    std::mt19937 eng(rd());                                  // seed the generator
+    std::uniform_real_distribution<> distr(-1, 1);    // define the range
 
     for(int i = 0; i < peers - 1; i++){
         float rnd = distr(eng);
@@ -210,7 +227,6 @@ int main(int argc, char **argv) {
 
     peerLastItem[peers - 1] = ni-1;
 
-    //Controlla che la somma degli elementi sia corretta
     /*** check the partitioning correctness ***/
     int lastNotNull=0;
     long sum = peerLastItem[0] + 1;
@@ -230,7 +246,7 @@ int main(int argc, char **argv) {
             }
         }
     }
-    cout<< "sum: " << sum << endl;
+    //cout<< "sum: " << sum << endl;
     if(sum != ni) {
         cerr << "ERROR: ni = "<< ni << "!= sum = " << sum << endl;
         exit(EXIT_FAILURE);
@@ -239,32 +255,25 @@ int main(int argc, char **argv) {
 
     /*** assign parameters read from command line ***/
     params.ni = ni;
+    params.name_file = name_file;
     params.domainSize = domainSize;
+    params.graphType = graphType;
     params.peers = peers;
     params.fanOut = fanOut;
-    params.graphType = graphType;
     params.convThreshold = convThreshold;
     params.convLimit = convLimit;
-    params.outputFilename = outputFilename;
     params.roundsToExecute = roundsToExecute;
-    params.delta = delta;
-    // Parameters of the algorithm
-    params.alpha = alpha;
-    params.gamma = gamma;
-    params.ln_gamma = ln_gamma;
-    params.offset = offset;
-    params.bin_limit = bin_limit;
+    params.outputFilename = outputFilename;
 
     outputOnFile = !params.outputFilename.empty();
     if (!outputOnFile) {
         printf("\n\nPARAMETERS:\n");
         //printf("distinct items in the stream = %d\n", params.domainSize);
-        //cout << "dataset = " << params.name_file << "\n";
-        //cout << "n° points = " << params.ni << "\n";
-        cout << "alpha = " << params.alpha << "\n";
-        cout << "gamma = " << params.gamma << "\n";
-        cout << "offset = " << params.offset << "\n";
-        cout << "bin_limit = " << params.bin_limit << "\n";
+        cout << "dataset = " << params.name_file << "\n";
+        cout << "n° points = " << params.ni << "\n";
+        cout << "alpha = " << alpha << "\n";
+        cout << "offset = " << offset << "\n";
+        cout << "bin_limit = " << bin_limit << "\n";
         cout << "peers = " << params.peers << "\n";
         cout << "fan-out = " << params.fanOut << "\n";
         cout << "graph type = ";
@@ -303,9 +312,6 @@ int main(int argc, char **argv) {
     }
 
     /*** Declaration of peer sketches ***/
-    //auto *dds = new map<int,int>[params.peers];
-
-    //DDS_type *dds = DDS_Init(DEFAULT_OFFSET, DEFAULT_BIN_LIMIT, DEFAULT_ALPHA);
     auto *dds = new DDS_type*[params.peers];
 
     /*** Distribution compute simulation ***/
@@ -313,20 +319,15 @@ int main(int argc, char **argv) {
     for(int peerID = 0; peerID < params.peers; peerID++){
         //cout << "-----------------------------------------" << endl;
         //cout << "PeerID = " << peerID << endl;
-        dds[peerID] = DDS_Init(DEFAULT_OFFSET, DEFAULT_BIN_LIMIT, DEFAULT_ALPHA);
+        dds[peerID] = DDS_Init(offset, bin_limit, alpha);
 
         for ( long i = start; i <= peerLastItem[peerID]; i++ ) {
             DDS_Add(dds[peerID], dataset[i]);
         }
 
+        //cout << "PeerID = " << peerID << " sketch size = " << DDS_Size(dds[peerID]) << " alpha = " << dds[peerID]->alpha << endl;
         start = peerLastItem[peerID] + 1;
     }
-
-    for(int peerID = 0; peerID < params.peers; peerID++){
-        cout << "PeerID = " << peerID << " sketch size = " << DDS_Size(dds[peerID]) << " alpha = " << dds[peerID]->alpha << endl;
-    }
-
-
 
     // this is used to estimate the number of peers
     // Peso per ogni peer, per la somma solo uno ha valore 1, gli altri hanno valore 0
@@ -365,8 +366,6 @@ int main(int argc, char **argv) {
         memcpy(prevestimate, dimestimate, params.peers * sizeof(double));
 
         for (int peerID = 0; peerID < params.peers; peerID++) {
-            // check peer convergence
-
 
             // determine peer neighbors
             igraph_vector_t neighbors;
@@ -385,17 +384,7 @@ int main(int argc, char **argv) {
                 igraph_integer_t edgeID;
                 igraph_get_eid(&graph, &edgeID, peerID, neighborID, IGRAPH_UNDIRECTED, 1);
 
-                // projection miei dati e vicini
-                //projectionMerge(projection[neighborID], projection[peerID]);
-                //cout << "-----------------------------------------------" << endl;
-                //cout << "PeerID N = " << dds[peerID]->n << " size " << DDS_Size(dds[peerID]) << endl;
-                //cout << "NeighbornID N = " << dds[neighborID]->n << " size " << DDS_Size(dds[neighborID]) << endl;
-                //cout << "merge " << endl;
                 DDS_mergeGossip(dds[peerID], dds[neighborID]);
-                dds[neighborID]->n = dds[peerID]->n;
-                //dds[neighborID]->bins = dds[peerID]->bins;
-                //cout << "PeerID N = " << dds[peerID]->n << " size " << DDS_Size(dds[peerID]) << endl;
-                //cout << "NeighbornID N = " << dds[neighborID]->n << " size " << DDS_Size(dds[neighborID]) << endl;
 
                 // Invio il peso/2 al mio vicino e una copia a me stesso e ne faccio la somma, dato che simulo e la
                 // comunicazione è bidirezionale copio il risultato anche nel mio vicino
@@ -408,7 +397,6 @@ int main(int argc, char **argv) {
                 double mean_size = (datasetsizeestimate[peerID] + datasetsizeestimate[neighborID]) / 2;
                 datasetsizeestimate[peerID] = mean_size;
                 datasetsizeestimate[neighborID] = mean_size;
-                //cout << "Mean " << mean_size << endl;
             }
 
             igraph_vector_destroy(&neighbors);

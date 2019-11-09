@@ -1,15 +1,15 @@
 /********************************************************************
-DDSketch
+ DDSketch
 
-An algorithm for tracking quantiles in data streams
+ An algorithm for tracking quantiles in data streams
 
-Charles Masson, Jee E. Rim, and Homin K. Lee. 2019. DDSketch: a fast and fully-mergeable quantile sketch with relative-error guarantees. Proc. VLDB Endow. 12, 12 (August 2019), 2195-2205. DOI: https://doi.org/10.14778/3352063.3352135
+ Charles Masson, Jee E. Rim, and Homin K. Lee. 2019. DDSketch: a fast and fully-mergeable quantile sketch with relative-error guarantees. Proc. VLDB Endow. 12, 12 (August 2019), 2195-2205. DOI: https://doi.org/10.14778/3352063.3352135
 
-This implementation by
-by Giuseppe Morleo
-University of Salento, Italy
+ This implementation by
+ by Giuseppe Morleo
+ University of Salento, Italy
 
-*********************************************************************/
+ *********************************************************************/
 /// \file
 
 #include <fstream>
@@ -262,7 +262,7 @@ int DDS_CheckAll(DDS_type *dds, double item) {
 
     int key = DDS_GetKey(dds, item);
 
-    map<int, double>::iterator it = dds->bins->find(key);
+    auto it = dds->bins->find(key);
     if (it == dds->bins->end()){
         cout << "Not found key = " << key << endl;
         DDS_getInterval(dds, key, dds->gamma);
@@ -320,18 +320,14 @@ bool DDS_isMergeable(DDS_type *dds1, DDS_type *dds2) {
 int DDS_mergeGossip(DDS_type *dds1, DDS_type *dds2) {
 
     // Merge function merges the bins in dds1 with the bins of dds2
-    // dds1 is the result of the merge operation
 
+    // Check if the bins have the same alpha
     while (!DDS_isMergeable(dds1,dds2)){
         if (dds1->alpha < dds2->alpha) {
-            //cout << "alpha dds1 è = " << dds1->alpha << " alpha dds2 = " << dds2->alpha << " espando dds1 " << endl;
             DDS_expandProportional(dds1);
         } else {
-            //cout << "alpha dds1 è = " << dds1->alpha << " alpha dds2 = " << dds2->alpha << " espando dds2 " << endl;
             DDS_expandProportional(dds2);
         }
-        //cout << "AA nuovi alpha = " << dds1->alpha << " e " << dds2->alpha << endl;
-
     }
 
     // Create new bins map
@@ -349,15 +345,9 @@ int DDS_mergeGossip(DDS_type *dds1, DDS_type *dds2) {
         (*new_bins)[bin.first] += bin.second/2;
     }
 
-
+    // Check if the new bin size is greater than bin limit
     if ( new_bins->size() > dds1->bin_limit ) {
-        float a = dds1->alpha-dds2->alpha;
-        if ( (a) > 0.004 ) {
-            cout << "errore" << endl;
-        }
-        cout << "Ho superato il limite, espando, size = " << new_bins->size() << " vecchi alpha = " << dds1->alpha << " e " << dds2->alpha << endl;
         DDS_expandProportional(dds1, dds2, new_bins);
-        cout << "nuovo alpha = " << dds1->alpha << " e " << dds2->alpha << endl;
     }
 
     dds1->bins->clear();
@@ -366,14 +356,13 @@ int DDS_mergeGossip(DDS_type *dds1, DDS_type *dds2) {
     dds2->bins->insert(new_bins->begin(), new_bins->end());
 
     dds1->n = (dds1->n/2 + dds2->n/2);
+    dds2->n = dds1->n;
 
     new_bins->clear();
     delete new_bins;
 
     //cout << "Size after merge = " << DDS_Size(dds1) << endl;
-
-    // Check if the new bin size is greater than bin limit
-
+    return 0;
 }
 
 DDS_interval *DDS_getInterval(DDS_type *dds, int i, float gamma) {
@@ -404,8 +393,8 @@ DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamm
     DDS_interval *old_interval = DDS_getInterval(dds, i, gamma_i);
     DDS_interval *new_interval = DDS_getInterval(dds, k, gamma_k);
 
-    //cout << "vecchio intervallo " << old_interval->min << " - " << old_interval->max << endl;
-    //cout << "nuovo intervallo " << new_interval->min << " - " << new_interval->max << endl;
+    //cout << "old " << old_interval->min << " - " << old_interval->max << endl;
+    //cout << "new " << new_interval->min << " - " << new_interval->max << endl;
 
     if ( old_interval->max > new_interval->max) {
         split->next = abs((old_interval->max-new_interval->max)/old_interval->lenght);
@@ -424,6 +413,9 @@ DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamm
         split->precedent = 1;
     }
 
+    delete new_interval;
+    delete old_interval;
+
     return  split;
 }
 
@@ -432,9 +424,9 @@ int DDS_expandProportional(DDS_type *dds){
     // In order to reduce the bucket's number, we need to increase the range of the bucket's index.
     // We compute the new values of gamma and ln_gamma according the new alpha.
     dds->alpha += 0.01;
-    //cout << "New alpha = " << dds->alpha << endl;
     float new_gamma = ((1 + dds->alpha)/(1 - dds->alpha));
     float new_ln_gamma = log(new_gamma);
+    //cout << "New alpha = " << dds->alpha << endl;
 
     DDS_split_interval *split = NULL;
 
@@ -451,10 +443,11 @@ int DDS_expandProportional(DDS_type *dds){
     }
 
     for (auto & bin : (*dds->bins)) {
-        //cout << "------------------------------------------------" << endl;
+
         item = DDS_GetRank(dds, bin.first);
         key = DDS_GetKey(dds, item, new_ln_gamma);
         split = DDS_getSplitInterval(dds, bin.first, key, dds->gamma, new_gamma);
+
         temp = floor(bin.second * split->precedent);
         if ( temp != 0 ) {
             (*new_bins)[key - 1] += temp;
@@ -467,6 +460,8 @@ int DDS_expandProportional(DDS_type *dds){
         if ( temp != 0 ) {
             (*new_bins)[key] += temp;
         }
+
+        delete split;
     }
 
     // Replace old bins map with new bins map
@@ -488,9 +483,9 @@ int DDS_expandProportional(DDS_type *dds1, DDS_type *dds2, map<int,double> *bins
     // We compute the new values of gamma and ln_gamma according the new alpha.
     dds1->alpha += 0.01;
     dds2->alpha += 0.01;
-    //cout << "New alpha = " << dds->alpha << endl;
     float new_gamma = ((1 + dds1->alpha)/(1 - dds1->alpha));
     float new_ln_gamma = log(new_gamma);
+    //cout << "New alpha = " << dds->alpha << endl;
 
     DDS_split_interval *split = NULL;
 
