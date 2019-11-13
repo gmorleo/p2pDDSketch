@@ -113,6 +113,30 @@ double DDS_GetRank(DDS_type *dds, int i)
     }
 }
 
+double DDS_GetBound(DDS_type *dds, int i) {
+
+    if ( i > 0) {
+        i -= dds->offset;
+        return pow(dds->gamma,i);
+    } else {
+        i += dds->offset;
+        return -pow(dds->gamma,-i);
+    }
+
+}
+
+double DDS_GetBound(DDS_type *dds, int i, float gamma) {
+
+    if ( i > 0) {
+        i -= dds->offset;
+        return pow(gamma,i);
+    } else {
+        i += dds->offset;
+        return -pow(gamma,-i);
+    }
+
+}
+
 int DDS_Add(DDS_type *dds, double item)
 {
     
@@ -179,7 +203,7 @@ int DDS_expand(DDS_type *dds)
     // In order to reduce the bucket's number, we need to increase the range of the bucket's index.
     // We compute the new values of gamma and ln_gamma according the new alpha.
     dds->alpha += 0.01;
-    cout << "New alpha = " << dds->alpha << endl;
+    //cout << "New alpha = " << dds->alpha << endl;
     float new_gamma = (1 + dds->alpha)/(1 - dds->alpha);
     float new_ln_gamma = log(new_gamma);
 
@@ -214,7 +238,7 @@ int DDS_expand(DDS_type *dds)
 
 int DDS_SumBins(DDS_type *dds) {
 
-    int sum = 0;
+    double sum = 0;
 
     for (auto & bin : (*(dds->bins))) {
         sum += bin.second;
@@ -283,6 +307,9 @@ void DDS_merge(DDS_type *dds1, DDS_type *dds2)
     // Merge function merges the bins in dds1 with the bins of dds2
     // dds1 is the result of the merge operation
 
+    double temp1 = DDS_SumBins(dds1);
+    double temp2 = DDS_SumBins(dds2);
+
     // Check if the bins have the same alpha
     while (!DDS_isMergeable(dds1,dds2)){
         if (dds1->alpha < dds2->alpha) {
@@ -302,9 +329,22 @@ void DDS_merge(DDS_type *dds1, DDS_type *dds2)
         (*(dds1->bins))[bin.first] += bin.second/2;
     }
 
+    double temp3 = DDS_SumBins(dds1);
+
+    if (abs(temp3-((temp1+temp2)/2) > 1)) {
+        cout << "diversi asd! " << " prima: " << ((temp1+temp2)/2) << " dopo " << temp3 << endl;
+    }
+
+    double temp4 = DDS_SumBins(dds1);
+
     // Check if the new bin size is greater than bin limit
     if ( dds1->bins->size() > dds1->bin_limit ) {
         DDS_expandProportional(dds1);
+    }
+
+    double temp5 = DDS_SumBins(dds1);
+    if (abs(temp4-temp5) > 1) {
+        cout << "diversi! " << " prima: " << temp4 << " dopo " << temp5 << endl;
     }
 
     // Mean of n
@@ -338,7 +378,7 @@ DDS_interval *DDS_getInterval(DDS_type *dds, int i, float gamma) {
     return interval;
 }
 
-DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamma_i, float gamma_k) {
+/*DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamma_i, float gamma_k) {
 
     DDS_split_interval *split = NULL;
     split = new DDS_split_interval{0, 0};
@@ -375,6 +415,42 @@ DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamm
     delete old_interval;
 
     return  split;
+}*/
+
+DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamma_i, float gamma_k) {
+
+    DDS_split_interval *split = NULL;
+    split = new DDS_split_interval{0, 0};
+
+    double old_max = DDS_GetBound(dds, i);
+    double old_min = DDS_GetBound(dds, (i - 1));
+
+    double new_max = DDS_GetBound(dds, k, gamma_k);
+    double new_min = DDS_GetBound(dds, (k - 1), gamma_k);
+
+    double lenght = abs(old_max-old_min);
+
+    // If the old max is greater than the new max, a portion of elements must be distributed in the next bin
+    if ( old_max > new_max) {
+        split->next = abs((old_max-new_max)/lenght);
+    }
+
+    // If the old min is fewer than the new min, a portion of elements must be distributed in the precedent bin
+    if ( old_min < new_min ) {
+        split->precedent = abs((new_min-old_min)/lenght);
+    }
+
+    // Saturation
+    if ( split->next > 1 ) {
+        split->next = 1;
+    }
+
+    // Saturation
+    if ( split->precedent > 1 ) {
+        split->precedent = 1;
+    }
+
+    return  split;
 }
 
 int DDS_expandProportional(DDS_type *dds){
@@ -389,7 +465,7 @@ int DDS_expandProportional(DDS_type *dds){
     DDS_split_interval *split = NULL;
 
     double item;
-    int temp;
+    double temp;
     int key;
 
     // Create new bins map
@@ -400,30 +476,36 @@ int DDS_expandProportional(DDS_type *dds){
         return -1;
     }
 
+    //cout << "---------------------------------------------" << endl;
     for (auto & bin : (*dds->bins)) {
 
         item = DDS_GetRank(dds, bin.first);
         key = DDS_GetKey(dds, item, new_ln_gamma);
         split = DDS_getSplitInterval(dds, bin.first, key, dds->gamma, new_gamma);
 
+        //cout << " totali: " << bin.second;
         // Element in precedent bin
         temp = floor(bin.second * split->precedent);
         if ( temp != 0 ) {
             (*new_bins)[key - 1] += temp;
+            //cout << " bin prec: " << temp;
         }
 
         // Elementi in next bin
         temp = floor(bin.second * split->next);
         if ( temp != 0 ) {
             (*new_bins)[key + 1] += temp;
+            //cout << " bin succ: " << temp;
         }
 
         // Elementi in current bin
         temp = bin.second - floor(bin.second * split->precedent) - floor(bin.second * split->next);
         if ( temp != 0 ) {
             (*new_bins)[key] += temp;
+            //cout << " questo: " << temp;
         }
 
+        //cout << endl;
         delete split;
     }
 
@@ -440,10 +522,73 @@ int DDS_expandProportional(DDS_type *dds){
     return 0;
 }
 
-int DDS_finalizeGossip(DDS_type *dds, double weight) {
+/*int DDS_expandProportional(DDS_type *dds){
+
+    // In order to reduce the bucket's number, we need to increase the range of the bucket's index.
+    // We compute the new values of gamma and ln_gamma according the new alpha.
+    dds->alpha += 0.01;
+    float new_gamma = ((1 + dds->alpha)/(1 - dds->alpha));
+    float new_ln_gamma = log(new_gamma);
+
+    double item;
+    int key;
+
+    // Create new bins map
+    map<int,double> *new_bins = NULL;
+    new_bins = new map<int, double>();
+    if(!new_bins){
+        fprintf(stdout,"Memory allocation of a new sketch map failed\n");
+        return -1;
+    }
+
+    for (auto & bin : (*dds->bins)) {
+        item = DDS_GetRank(dds, bin.first);
+        key = DDS_GetKey(dds, item, new_ln_gamma);
+
+        double temp = 0;
+
+        double old_max = DDS_GetValue(dds, bin.first);
+        double old_min = DDS_GetValue(dds, (bin.first-1));
+
+        double new_max = DDS_GetBound(dds, key, new_gamma);
+        if ( old_max > new_max) {
+            double perc_next = abs(( old_max - new_max ) / abs( old_max - old_min ) );
+            if ( perc_next > 1 ) {
+                perc_next = 1;
+            }
+            (*new_bins)[key + 1] += floor(bin.second * perc_next);
+            temp += floor(bin.second * perc_next);
+        }
+
+        double new_min = DDS_GetBound(dds, ( key - 1 ), new_gamma);
+        if ( new_min > old_min ) {
+            double perc_prec = abs(( old_min - new_min ) / abs( old_max - old_min ) );
+            if ( perc_prec > 1 ) {
+                perc_prec = 1;
+            }
+            (*new_bins)[key - 1] += floor(bin.second * perc_prec);
+            temp += floor(bin.second * perc_prec);
+        }
+        if ( (bin.second - temp) > 0 ) {
+            (*new_bins)[key] += bin.second - temp;
+        }
+    }
+
+    // Replace old bins map with new bins map
+    dds->bins->swap(*new_bins);
+    new_bins->clear();
+    delete new_bins;
+
+    dds->gamma = new_gamma;
+    dds->ln_gamma = new_ln_gamma;
+
+    return 0;
+}*/
+
+int DDS_finalizeMerge(DDS_type *dds, double weight) {
 
     for(auto & bin: (*dds->bins)) {
-        bin.second = ceil(bin.second/weight);
+        bin.second = (bin.second/weight);
     }
     dds->n = dds->n/weight;
 
@@ -454,11 +599,23 @@ int DDS_replaceBinMap(DDS_type *dds1, DDS_type *dds2) {
 
     dds2->alpha = dds1->alpha;
     dds2->gamma = dds1->gamma;
-    dds2->ln_gamma = dds2->ln_gamma;
-    dds2->n = dds2->n;
+    dds2->ln_gamma = dds1->ln_gamma;
+    dds2->n = dds1->n;
 
     dds2->bins->clear();
     dds2->bins->insert(dds1->bins->begin(),dds1->bins->end());
 
     return 0;
+}
+
+int DDS_prova(DDS_type *dds) {
+    for ( auto & bin  : (*dds->bins)) {
+        bin.second += 1000000;
+    }
+}
+
+int DDS_prova2(DDS_type *dds) {
+    for ( auto & bin  : (*dds->bins)) {
+        bin.second -= 1000000;
+    }
 }

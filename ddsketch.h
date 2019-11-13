@@ -195,7 +195,7 @@ extern int DDS_expandProportional(DDS_type *dds);
  * @param weight            Weight
  * @return                  0 success
  */
-extern int DDS_finalizeGossip(DDS_type *dds, double weight);
+extern int DDS_finalizeMerge(DDS_type *dds, double weight);
 
 /**
  * @brief                   This function return true or false if the two sketches are mergeable or not
@@ -212,3 +212,6 @@ extern bool DDS_isMergeable(DDS_type *dds1, DDS_type *dds2);
  * @return                  0 success
  */
 extern int DDS_replaceBinMap(DDS_type *dds1, DDS_type *dds2);
+
+extern int DDS_prova(DDS_type *dds);
+extern int DDS_prova2(DDS_type *dds);

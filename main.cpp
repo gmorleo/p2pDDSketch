@@ -20,6 +20,7 @@
 #include <map>
 #include <chrono>
 #include <fstream>
+#include <iomanip>
 #include "ddsketch.h"
 
 using namespace std;
@@ -73,7 +74,7 @@ int main(int argc, char **argv) {
     long        ni;                         // points number
     string      name_file = "../normal_mean_2_stdev_3.csv";
     uint32_t    domainSize = 1048575;       // number of possible distinct items
-    int         graphType = 2;              // graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
+    int         graphType = 4;              // graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
     int         peers = 1000;                 // number of peers
     int         fanOut = 5;                 // fan-out of peers
     double      convThreshold = 0.0001;     // local convergence tolerance
@@ -86,11 +87,10 @@ int main(int argc, char **argv) {
 
     int         p_star = -1;
     double      delta = 0.04;
-    double          elapsed;
-    int             iterations;
+    double      elapsed;
+    int         iterations;
 
-
-    bool            autoseed = false;
+    bool        autoseed = false;
     bool        outputOnFile = false;
     string      outputFilename;
     long        *peerLastItem;              // index of a peer last item
@@ -106,13 +106,6 @@ int main(int argc, char **argv) {
                 return -1;
             }
             domainSize = stol(argv[i]);
-        } else if (strcmp(argv[i], "-delta") == 0) {
-            i++;
-            if (i >= argc) {
-                cerr << "Missing delta parameter." << endl;
-                return -1;
-            }
-            delta = stod(argv[i]);
         } else if (strcmp(argv[i], "-p") == 0) {
             i++;
             if (i >= argc) {
@@ -133,7 +126,14 @@ int main(int argc, char **argv) {
                 cerr << "Missing fan-out parameter." << endl;
                 return -1;
             }
-            fanOut = stoi(argv[i]);;
+            fanOut = stoi(argv[i]);
+        } else if (strcmp(argv[i], "-s") == 0) {
+            i++;
+            if (i >= argc) {
+                cerr << "Missing seed parameter" << endl;
+                return -1;
+            }
+            graphType = stoi(argv[i]);
         } else if (strcmp(argv[i], "-d") == 0) {
             i++;
             if (i >= argc) {
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
                 return -1;
             }
             convLimit = stol(argv[i]);
-        } else if (strcmp(argv[i], "-of") == 0) {
+        } else if (strcmp(argv[i], "-out") == 0) {
             i++;
             if (i >= argc) {
                 cerr << "Missing filename for simulation output." << endl;
@@ -169,7 +169,7 @@ int main(int argc, char **argv) {
                 return -1;
             }
             roundsToExecute = stoi(argv[i]);
-        } else if (strcmp(argv[i], "-al") == 0) {
+        } else if (strcmp(argv[i], "-alp") == 0) {
             i++;
             if (i >= argc) {
                 cerr << "Missing number of accuracy for DDSketch.\n";
@@ -197,7 +197,7 @@ int main(int argc, char **argv) {
                 return -1;
             }
             name_file = argv[i];
-        }else if (strcmp(argv[i], "-as") == 0) {
+        } else if (strcmp(argv[i], "-as") == 0) {
             autoseed = true;
         } else {
             //usage(argv[0]);
@@ -313,6 +313,7 @@ int main(int argc, char **argv) {
     /*** Declaration of peer sketches ***/
     auto *dds = new DDS_type*[params.peers];
 
+    double temp_sum;
     startTheClock();
     /*** Distributed computation simulation ***/
     long start = 0;
@@ -324,9 +325,12 @@ int main(int argc, char **argv) {
             DDS_Add(dds[peerID], dataset[i]);
         }
 
+        //DDS_prova(dds[peerID]);
         //cout << "PeerID = " << peerID << " sketch size = " << DDS_Size(dds[peerID]) << " alpha = " << dds[peerID]->alpha << endl;
         start = peerLastItem[peerID] + 1;
+        temp_sum += DDS_SumBins(dds[peerID]);
     }
+    cout << "sum: " << temp_sum << " ni: " << params.ni << endl;
 
     double distributed_time = stopTheClock();
     if (!outputOnFile) {
@@ -439,27 +443,73 @@ int main(int argc, char **argv) {
     /*** Distributed computation simulation ***/
     // Finalize the sum by dividing each value by dimestimate[peerID]
     for(int peerID = 0; peerID < params.peers; peerID++){
-        DDS_finalizeGossip(dds[peerID], dimestimate[peerID]);
+        //DDS_prova2(dds[peerID]);
+        DDS_finalizeMerge(dds[peerID], dimestimate[peerID]);
     }
 
-    // determine the 0.7 quantile
-    float q = 0.7;
-    int idx = floor(1+q*(params.ni-1));
+    // Determine the quantile
+    float q[] = { 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
+    int n_q = 9;
 
-    // determine the correct answer
-    // i.e., the number stored at the index (idx-1) in the sorted permutation of the vector
-    // note that we are not sorting the vector, we are using the quickselect() algorithm
-    // which in C++ is available as std::nth_element
-    nth_element(dataset, dataset + (idx-1), dataset +  params.ni);
+    startTheClock();
+    for ( int i = 0; i < n_q; i++ ) {
+        int idx = floor(1+q[i]*(params.ni-1));
+        // determine the correct answer
+        // i.e., the number stored at the index (idx-1) in the sorted permutation of the vector
+        // note that we are not sorting the vector, we are using the quickselect() algorithm
+        // which in C++ is available as std::nth_element
+        nth_element(dataset, dataset + (idx-1), dataset +  params.ni);
+        double quantile = DDS_GetQuantile(dds[0], q[i]);
+        double error = abs((quantile-dataset[idx-1])/dataset[idx-1]);
+        cout << "q: " << std::setw(4) << q[i] << " estimate: " << std::setw(10) << quantile << " real: " << std::setw(10) << dataset[idx-1] << " error: " << std::setw(10) << error << endl;
+    }
+    double quantile_time = stopTheClock();
+    if (!outputOnFile) {
+        cout <<"Time (seconds) required to compute all quantile: " << quantile_time << "\n";
+    }
 
-    double quantile = DDS_GetQuantile(dds[0], q);
-    double error = abs((quantile-dataset[idx-1])/dataset[idx-1]);
+    DDS_PrintCSV("peer0.csv", dds[0]->bins);
+    //DDS_PrintCSV("peer1000.csv", dds[1000]->bins);
 
-    cout << "Result for q = " << q << endl;
-    cout << "Real: " << dataset[idx-1] << " Estimation: " << quantile << " Error: " << error << endl;
+    double temp = 0;
+    for(int peerID = 0; peerID < params.peers; peerID++){
+        //cout << "peer:" << std::setw(5) << peerID <<  " dim estimate: " << std::setw(5) << dimestimate[peerID] << endl;
+        //cout << "peer:" << std::setw(5) << peerID <<  " dim estimate: " << std::setw(5) << dds[peerID]->n << endl;
+        temp += DDS_SumBins(dds[peerID]);
+    }
+    cout << "sum: " << temp/peers << " ni: " << params.ni << endl;
+    cout << "peer:" << std::setw(5) << 0 <<  " alpha: " << std::setw(5) << dds[0]->alpha << endl;
+    cout << "peer:" << std::setw(5) << 0 <<  " size: " << std::setw(5) << DDS_Size(dds[0]) << endl;
 
+    igraph_vector_destroy(&result);
+    igraph_destroy(&graph);
+
+    free(dimestimate);
+    free(prevestimate);
+    free(converged);
+    free(convRounds);
 
     return 0;
+}
+
+void usage(char* cmd)
+{
+    cerr
+            << "Usage: " << cmd << "\n"
+            << "-di         domain size\n"
+            << "-p          number of peers\n"
+            << "-f          fan-out of peers\n"
+            << "-s          seed\n"
+            << "-d          graph type: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular\n"
+            << "-ct         convergence tolerance\n"
+            << "-cl         number of consecutive rounds in which convergence must be satisfied\n"
+            << "-out        output filename, if specified a file with this name containing all of the peers stats is written\n"
+            << "-r          number of rounds to execute\n"
+            << "-alp        accuracy for DDSketch\n"
+            << "-ofs        offset for DDSketch\n"
+            << "-bl         bins limit for DDSketch\n"
+            << "-ds         name of dataset\n"
+            << "-as         enable autoseeding\n\n";
 }
 
 /**
