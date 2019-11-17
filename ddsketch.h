@@ -28,11 +28,11 @@ typedef struct DDS_type{
     /// maximum number of bins
     int bin_limit;
     /// this parameter defines alpha-accuracy of a q-quantile
-    float alpha;
+    double alpha;
     /// this parameter is defined as (1 + alpha)/(1-alpha)
-    float gamma;
+    double gamma;
     /// this is not a required parameter; it is defined as log(gamma)
-    float ln_gamma;
+    double ln_gamma;
     /// this map implements the bins of DDSketch
     map<int, double> *bins;
     /// this parameter keeps track of the number of items added to the sketch
@@ -102,12 +102,29 @@ extern int DDS_GetKey(DDS_type *dds, double item, float ln_gamma);
 extern double DDS_GetRank(DDS_type *dds, int i);
 
 /**
- * @brief               This function creates a new bucket with index associated with the value (item), or if that bucket already exists, it simply add 1 to the bucket's counter
- * @param dds           User-supplied parameters
+ * \brief               This function creates a new bucket with index associated with the value (item), or if that bucket already exists, it simply add 1 to the bucket's counter
+ * @param dds           The sketch
  * @param item          The the input value
  * @return              0 success, -1 error
  */
-extern int DDS_Add(DDS_type *dds, double item);
+extern int DDS_AddCollapse(DDS_type *dds, double item);
+
+extern int DDS_AddCollapseLastBucket(DDS_type *dds, double item);
+
+/**
+ * @brief               This function collapses the last two buckets
+ * @param dds           The sketch
+ * @return
+ */
+extern int DDS_CollapseLastBucket(DDS_type *dds);
+
+/**
+ * @brief               The function collapses the old buckets in the new buckets based on the new range (range ^ 2)
+ * @param dds           The sketch
+ * @return              0 success, -1 failure
+ */
+extern int DDS_Collapse(DDS_type *dds);
+
 
 /**
  * @brief               This function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1 otherwise it simply decrements by 1 the bucket's counter
@@ -116,13 +133,6 @@ extern int DDS_Add(DDS_type *dds, double item);
  * @return              0 success
  */
 extern int DDS_Delete(DDS_type *dds, double item);
-
-/**
- * @brief               In order to reduce the bucket's number, we need to increase the range of the bucket's index.
- * @param dds           User-supplied parameters
- * @return              0 success, -1 error
- */
-extern int DDS_expand(DDS_type *dds);
 
 /**
  * @brief               The function computes the estimate of the desired q-quantile (q)
@@ -161,33 +171,6 @@ extern int DDS_PrintCSV(string name, map<int,double> *bins);
  * @return                  0 success, -1 failed
  */
 extern int DDS_CheckAll(DDS_type *dds, double item);
-
-/**
- * @brief                   This function computes the range of a key
- * @param dds               Parameters of the sketch
- * @param i                 Key
- * @param gamma             Gamma value according alpha
- * @return                  DDS_interval
- */
-extern DDS_interval *DDS_getInterval(DDS_type *dds, int i, float gamma);
-
-/**
- * @brief                   This function computes the percent of elements that are going to be distributed in the precedent or next bin.
- * @param dds               Parameters of the sketch
- * @param i                 Index of old bin of value (x) according the old alpha
- * @param k                 Index of new bin of value (x) according the new alpha
- * @param gamma_i           Gamma value according the old alpha
- * @param gamma_k           Gamma value according the new alpha
- * @return                  DDS_split_interval
- */
-extern DDS_split_interval *DDS_getSplitInterval(DDS_type *dds, int i, int k, float gamma_i, float gamma_k);
-
-/**
- * @brief                   This function expands all the bins in the map, increasing alpha by 0.01. The values in the old range are redistributed in the new range with a proportional way (supposing all values uniforming distributed on the interval)
- * @param dds               Parameters of the sketch
- * @return                  0 success
- */
-extern int DDS_expandProportional(DDS_type *dds);
 
 /**
  * @brief                   This function finalizes the average consensus algorithm, dividing the mean with the weight
