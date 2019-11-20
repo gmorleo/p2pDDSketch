@@ -12,22 +12,22 @@
  *********************************************************************/
 /// \file
 
+#include <iomanip>
 #include "ddsketch.h"
 
 
-
-DDS_type *DDS_Init(int offset, int bin_limit, float alpha)
+DDS_type *DDS_Init(int offset, int bin_limit, double alpha)
 {
-    
+
     // Initialize the sketch based on user-supplied parameters
     DDS_type *dds = nullptr;
-    
+
     dds = new (nothrow) (DDS_type); // do not use the C malloc() function: it does not call C++ constructors
     if(!dds){
         fprintf(stdout,"Memory allocation of sketch data structure failed\n");
         return nullptr;
     }
-    
+
     dds->offset = offset;
     dds->bin_limit = bin_limit;
     dds->alpha = alpha;
@@ -39,9 +39,11 @@ DDS_type *DDS_Init(int offset, int bin_limit, float alpha)
         delete dds;
         return nullptr;
     }
-    
+
     dds->n = 0;
-    
+
+    dds->min_value = pow(dds->gamma,pow(2,29));
+
     return dds;
 }
 
@@ -69,63 +71,34 @@ int DDS_GetKey(DDS_type *dds, double item)
 {
     // Given a value (item), returns the correspondning bucket index
     int key;
-    
+
     if (item > 0) {
         key = int(ceil((log(item))/dds->ln_gamma)) + dds->offset;
     } else if (item < 0) {
         key = -int(ceil((log(-item))/dds->ln_gamma)) - dds->offset;
-    } else {
+    } else if ( abs(item) < dds->min_value) {
         key = 0;
     }
-    
-    return key;
-    
-}
 
-int DDS_GetKey(DDS_type *dds, double item, float ln_gamma)
-{
-    // Given a value (item), returns the correspondning bucket index
-    int key;
-    
-    if (item > 0) {
-        key = int(ceil((log(item))/ln_gamma)) + dds->offset;
-    } else if (item < 0) {
-        key = -int(ceil((log(-item))/ln_gamma)) - dds->offset;
-    } else {
-        key = 0;
-    }
-    
     return key;
-    
+
 }
 
 double DDS_GetRank(DDS_type *dds, int i)
 {
-    
+
     // Given a bucket index (i), this function returns the estimation of the rank x_q
-    
+
     if (i > 0) {
         i -= dds->offset;
         return (2 * pow(dds->gamma, i))/(dds->gamma + 1);
-    } else {
+    } else if (i < 0){
         i += dds->offset;
         return -(2 * pow(dds->gamma, -i))/(dds->gamma + 1);
-    }
-}
-
-int DDS_NewKey(DDS_type* dds,  double i, int of){
-
-    if (i > 0) {
-        i -= dds->offset;
-        i = ceil((i+of)/2);
-        i += dds->offset;
-    } else {
-        i += dds->offset;
-        i = floor((i+of)/2);
-        i -= dds->offset;
+    } else if ( i == 0) {
+        return dds->min_value;
     }
 
-    return int(i);
 }
 
 double DDS_GetBound(DDS_type *dds, int i) {
@@ -147,23 +120,25 @@ double DDS_GetBound(DDS_type *dds, int i) {
 
 }
 
-double DDS_GetBound(DDS_type *dds, int i, double gamma) {
+int DDS_CollapseKey(DDS_type* dds, double i, int of){
 
     // if the bucket index is positive subtract the offset, otherwise add the offset
-    // then, compute the bound by exponentiating gamma
+    // then, compute the new key
 
-    double bound;
-
-    if ( i > 0) {
+    if (i > 0) {
         i -= dds->offset;
-        bound = pow(gamma,i);
-    } else {
+        i = ceil((i+of)/2);
         i += dds->offset;
-        bound = -pow(gamma,-i);
+    } else if ( i< 0 ){
+        i += dds->offset;
+        i = -i;
+        i = -ceil((i+of)/2);
+        i -= dds->offset;
+    } else if ( abs(i) < dds->min_value) {
+        i = 0;
     }
 
-    return bound;
-
+    return int(i);
 }
 
 int DDS_AddCollapse(DDS_type *dds, double item)
@@ -176,8 +151,8 @@ int DDS_AddCollapse(DDS_type *dds, double item)
     (*(dds->bins))[key] += 1;
     dds->n += 1;
 
-    if (DDS_Size(dds) > dds->bin_limit ){
-        // If the bin size is greater than bin_limit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
+    while ( DDS_Size(dds) > dds->bin_limit ) {
+        // While the bin size is greater than bin_limit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
 
         // collapse with gamma^2
         int return_value = DDS_Collapse(dds);
@@ -190,13 +165,14 @@ int DDS_AddCollapse(DDS_type *dds, double item)
 
 }
 
-int DDS_Delete(DDS_type *dds, double item)
+int DDS_DeleteCollapse(DDS_type *dds, double item)
 {
 
     // this function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1
     // otherwise it simply decrements by 1 the bucket's counter
 
     int key = DDS_GetKey(dds, item);
+
     map<int, double>::iterator it = dds->bins->find(key);
     if (it != dds->bins->end()){
 
@@ -218,6 +194,7 @@ int DDS_Delete(DDS_type *dds, double item)
 
     }
     else{
+        cout << item << ", " << key << " without offset " << DDS_RemoveOffset(dds, key) <<", \n";
         //dds->n -= 1;
         //cout << "There is no bin associated to item " << item << " with key " << key << endl;
 
@@ -229,17 +206,15 @@ int DDS_Delete(DDS_type *dds, double item)
 
 int DDS_Collapse(DDS_type *dds) {
 
-    //cout << "Size before collapse: " << DDS_Size(dds) << " sum: " << DDS_SumBins(dds) << endl;
-
     // determine new gamma and alpha values to be used
-
     dds->gamma = pow(dds->gamma, 2);
     dds->ln_gamma = log(dds->gamma);
     dds->alpha = (2 * dds->alpha) / (1 + pow(dds->alpha, 2));
+    dds->min_value = pow(dds->gamma,pow(2,29));;
 
     // Create new bins map
-    map<int, double> *new_bins = NULL;
-    new_bins = new(nothrow) map<int, double>();
+    map<int, double> *new_bins = nullptr;
+    new_bins = new (nothrow) map<int, double>();
     if (!new_bins) {
         fprintf(stdout, "Memory allocation of a new sketch map failed\n");
         return -1;
@@ -249,69 +224,22 @@ int DDS_Collapse(DDS_type *dds) {
     for (auto it = dds->bins->begin(); it != dds->bins->end(); ++it) {
 
         int key = it->first;
-        // handle positive bucket indexes
-        if ( key > 0 ) {
-
-            // if the bucket index is even
-            if ( key%2 == 0 ) {
-
-                // determine the new bucket index corresponding to the collapsing of this bucket and the preceding bucket (whose key is odd)
-                int new_key = DDS_NewKey(dds, key, -1);
-                (*new_bins)[new_key] += it->second;
-
-            } else {
-
-                // the bucket index is odd
-                // determine the new bucket index corresponding to the collapsing of this bucket and the next bucket (whose key is even)
-                // check if the next bucket exists
-                int new_key = DDS_NewKey(dds, key, +1);
-                auto next_bin = next(it, 1);
-
-                if ( next_bin->first == key+1) {
-                    (*new_bins)[new_key] += it->second + next_bin->second;
-                    // we have to skip the next bucket because we have already considered it in this interaction
-                    ++it;
-                    if ( it == dds->bins->end() ) {
-                        break;
-                    }
-                } else {
-                    (*new_bins)[new_key] += it->second;
-                }
-            }
+        // check if the bucket index is even
+        if (key % 2 == 0) {
+            int new_key = DDS_CollapseKey(dds, key, -1);
+            (*new_bins)[new_key] += it->second;
         } else {
-            // handle negative bucket indexes
-
-            // if the bucket index is even
-            if ( key%2 == 0 ) {
-
-                // determine the new bucket index corresponding to the collapsing of this bucket and the next bucket (whose key is odd)
-                // check if the next bucket exist
-                int new_key = DDS_NewKey(dds, key, +1);
-                auto next_bin = next(it, 1);
-
-                if ( next_bin->first == key+1) {
-                    (*new_bins)[new_key] += it->second + next_bin->second;
-                    // we have to skip the next bucket because we have already considered it in this interaction
-                    ++it;
-                    if ( it == dds->bins->end() ) {
-                        break;
-                    }
-                } else {
-                    (*new_bins)[new_key] += it->second;
-                }
-            } else {
-                int new_key = DDS_NewKey(dds, key, -1);
-                (*new_bins)[new_key] += it->second;
-            }
+            int new_key = DDS_CollapseKey(dds, key, +1);
+            (*new_bins)[new_key] += it->second;
         }
+
     }
 
     // Replace old bins map with new bins map
     dds->bins->swap(*new_bins);
+
     new_bins->clear();
     delete new_bins;
-
-    //cout << "Size after collapse = " << DDS_Size(dds) << " sum: " << DDS_SumBins(dds) << " alpha: " << dds->alpha << " gamma: " << dds->gamma << endl << endl;
 
     return 0;
 }
@@ -326,17 +254,26 @@ double DDS_GetQuantile(DDS_type *dds, float q)
     // We need to sum up the buckets until we find the bucket containing the q-quantile value x_q
     auto it = dds->bins->begin();
     int i = it->first;
-    int count = it->second;
-    
-    while (count <= q*(dds->n - 1)) {
+    double count = it->second;
+    double stop = q*double(dds->n - 1);
+
+    while ( count <= stop) {
+
         ++it;
         i = it->first;
         count += it->second;
+
     }
-    
+
     // Return the estimation x_q of bucket index i
     return DDS_GetRank(dds, i);
-    
+
+}
+
+bool DDS_isMergeable(DDS_type *dds1, DDS_type *dds2) {
+
+    return abs(dds1->alpha - dds2->alpha) <= 0.005;
+
 }
 
 void DDS_merge(DDS_type *dds1, DDS_type *dds2)
@@ -374,11 +311,7 @@ void DDS_merge(DDS_type *dds1, DDS_type *dds2)
     //cout << "Size after merge = " << DDS_Size(dds1) << endl;
 }
 
-bool DDS_isMergeable(DDS_type *dds1, DDS_type *dds2) {
 
-    return abs(dds1->alpha - dds2->alpha) <= 0.005;
-
-}
 
 int DDS_finalizeMerge(DDS_type *dds, double weight) {
 
@@ -403,9 +336,43 @@ int DDS_replaceBinMap(DDS_type *dds1, DDS_type *dds2) {
     return 0;
 }
 
-int DDS_SumBins(DDS_type *dds) {
+int DDS_PrintCSV(DDS_type* dds, string name) {
 
-    double sum = 0;
+    ofstream file;
+    file.open(name);
+    if (file.fail()) {
+        cout << "Error with file " << name << endl;
+        return -1;
+    }
+
+    file << fixed;
+    file << setprecision(8);
+    file << "key, count, max, min, length, \n";
+    for (auto & bin : (*(dds->bins))) {
+
+        double max, min;
+
+        if ( bin.first > 0) {
+            max = DDS_GetBound(dds, bin.first);
+            min = DDS_GetBound(dds, (bin.first - 1));
+        } else {
+            max = DDS_GetBound(dds, bin.first);
+            min = DDS_GetBound(dds, (bin.first + 1));
+        }
+
+
+        file << DDS_RemoveOffset(dds, bin.first) <<", "<<bin.second<<", "<<max<<", "<< min <<", "<<max-min<<", \n";
+
+    }
+
+    file.close();
+
+    return 0;
+}
+
+long DDS_SumBins(DDS_type *dds) {
+
+    long sum = 0;
 
     for (auto & bin : (*(dds->bins))) {
         sum += bin.second;
@@ -414,30 +381,13 @@ int DDS_SumBins(DDS_type *dds) {
     return sum;
 }
 
-int DDS_PrintCSV(string name, map<int,double> *bins) {
+int DDS_RemoveOffset(DDS_type* dds, int i) {
 
-    ofstream file;
-    file.open(name);
-
-    for (auto& b: (*bins)) {
-        file << b.first << ", ";
-        file << b.second << ",\n";
+    if (i > 0) {
+        i -= dds->offset;
+    } else {
+        i += dds->offset;
     }
 
-    file.close();
-
-    return 0;
-}
-
-
-int DDS_CheckAll(DDS_type *dds, double item) {
-
-    int key = DDS_GetKey(dds, item);
-
-    auto it = dds->bins->find(key);
-    if (it == dds->bins->end()){
-        cout << "Not found key = " << key << endl;
-    }
-
-    return 0;
+    return i;
 }

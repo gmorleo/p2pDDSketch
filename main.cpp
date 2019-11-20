@@ -30,7 +30,7 @@ using namespace std::chrono;
 const string        DEFAULT_FILENAME = "../normal_mean_2_stdev_3.csv";
 const uint32_t      DEFAULT_DOMAIN_SIZE = 1048575;
 const int           DEFAULT_GRAPH_TYPE = 2;
-const int           DEFAULT_PEERS = 100000;
+const int           DEFAULT_PEERS = 10000;
 const int           DEFAULT_FAN_OUT = 5;
 const double        DEFAULT_CONVERGENCE_THRESHOLD = 0.0001;
 const int           DEFAULT_CONVERGENCE_LIMIT = 3;
@@ -38,7 +38,7 @@ const int           DEFAULT_ROUND_TO_EXECUTE = -1;
 const bool          DEFAULT_AUTO_SEED = false;
 const int           DEFAULT_OFFSET = 1073741824; //2^31/2
 const int           DEFAULT_BIN_LIMIT = 500;
-const float         DEFAULT_ALPHA = 0.01;
+const float         DEFAULT_ALPHA = 0.008;
 
 struct Params {
     /// Number of points in the dataset
@@ -74,7 +74,15 @@ struct Params {
     double      alpha;
 };
 
+/**
+ * @brief                   This function sets the start time
+ */
 void startTheClock();
+
+/**
+ * @brief                   This function returns the time between the start time and the end time
+ * @return                  Total time between two times
+ */
 double stopTheClock();
 
 Params* init();
@@ -83,11 +91,31 @@ void usage(char* cmd);
 
 igraph_t generateGraph(Params* params);
 
+/**
+ * \brief                   This function computes the dimension of the dataset
+ * @param name_file         Name of dataset
+ * @return                  Return the number of element in the dataset(row)
+ */
 long getDatasetSize(const string &name_file);
+
+/**
+ * \brief                   This function loads the dataset into an array
+ * @param name_file         Name of dataset
+ * @param dataset           Array
+ * @return                  An array containing the whole dataset
+ */
 int loadDataset(const string &name_file, double *dataset);
 int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph);
 int distributedFinalizeMerge(Params* params, DDS_type** dds, double* dimestimate);
 int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLastItem);
+
+/**
+ * @brief               This function computes the quantile
+ * @param dds           Parameters of the sketch
+ * @param stream        Vector that contains all the real values inserted
+ * @param n_element     Number of element
+ * @return              0: success; \n-2: error;
+ */
 int printQuantile(DDS_type* dds, double* stream, long n_element);
 int computeLastItem(Params* params, long* peerLastItem);
 int printParameters(Params* params);
@@ -303,7 +331,6 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
                 igraph_integer_t edgeID;
                 igraph_get_eid(&graph, &edgeID, peerID, neighborID, IGRAPH_UNDIRECTED, 1);
 
-                //DDS_mergeGossip(dds[peerID], dds[neighborID]);
                 DDS_merge(dds[peerID], dds[neighborID]);
                 DDS_replaceBinMap(dds[peerID], dds[neighborID]);
 
@@ -587,29 +614,16 @@ void usage(char* cmd)
             << "-as         enable autoseeding\n\n";
 }
 
-/**
- * @brief                   This function sets the start time
- */
 void startTheClock(){
     t1 = high_resolution_clock::now();
 }
 
-/**
- * @brief                   This function returns the time between the start time and the end time
- * @return                  Total time between two times
- */
 double stopTheClock() {
     t2 = high_resolution_clock::now();
     duration<double> time_span = duration_cast<duration<double>>(t2 - t1);
     return time_span.count();
 }
 
-
-/**
- * \brief                   This function computes the dimension of the dataset
- * @param name_file         Name of dataset
- * @return                  Return the number of element in the dataset(row)
- */
 long getDatasetSize(const string &name_file) {
 
     ifstream inputFile(name_file);
@@ -627,12 +641,6 @@ long getDatasetSize(const string &name_file) {
     return rows;
 }
 
-/**
- * \brief                   This function loads the dataset into an array
- * @param name_file         Name of dataset
- * @param dataset           Array
- * @return                  An array containing the whole dataset
- */
 int loadDataset(const string &name_file, double *dataset) {
 
     ifstream inputFile(name_file);
@@ -682,13 +690,6 @@ igraph_t generateGraph(Params* params) {
     return graph;
 }
 
-/**
- * @brief               This function computes the quantile
- * @param dds           Parameters of the sketch
- * @param stream        Vector that contains all the real values inserted
- * @param n_element     Number of element
- * @return              0: success; \n-2: error;
- */
 int printQuantile(DDS_type* dds, double* stream, long n_element) {
 
     cout << endl << "Quantile with alpha = " << dds->alpha << endl;
