@@ -30,7 +30,7 @@ using namespace std::chrono;
 const string        DEFAULT_FILENAME = "../normal_mean_2_stdev_3.csv";
 const uint32_t      DEFAULT_DOMAIN_SIZE = 1048575;
 const int           DEFAULT_GRAPH_TYPE = 2;
-const int           DEFAULT_PEERS = 10000;
+const int           DEFAULT_PEERS = 1000;
 const int           DEFAULT_FAN_OUT = 5;
 const double        DEFAULT_CONVERGENCE_THRESHOLD = 0.0001;
 const int           DEFAULT_CONVERGENCE_LIMIT = 3;
@@ -89,14 +89,12 @@ Params* init();
 int parse(int argc, char** argv, Params* params);
 void usage(char* cmd);
 
-igraph_t generateGraph(Params* params);
-
 /**
  * \brief                   This function computes the dimension of the dataset
  * @param name_file         Name of dataset
  * @return                  Return the number of element in the dataset(row)
  */
-long getDatasetSize(const string &name_file);
+int getDatasetSize(const string &name_file, int &rows);
 
 /**
  * \brief                   This function loads the dataset into an array
@@ -105,9 +103,10 @@ long getDatasetSize(const string &name_file);
  * @return                  An array containing the whole dataset
  */
 int loadDataset(const string &name_file, double *dataset);
+int distributedInitializeSketch(Params* params, DDS_type** dds);
+int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLastItem);
 int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph);
 int distributedFinalizeMerge(Params* params, DDS_type** dds, double* dimestimate);
-int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLastItem);
 
 /**
  * @brief               This function computes the quantile
@@ -116,7 +115,7 @@ int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLa
  * @param n_element     Number of element
  * @return              0: success; \n-2: error;
  */
-int printQuantile(DDS_type* dds, double* stream, long n_element);
+int testQuantile(DDS_type *dds, double* stream, int n_element);
 int computeLastItem(Params* params, long* peerLastItem);
 int printParameters(Params* params);
 
@@ -125,73 +124,98 @@ high_resolution_clock::time_point t1, t2;
 int main(int argc, char **argv) {
 
     // Declaration
+
+    int returnValue = -1;
+
     Params *params = nullptr;
     DDS_type** dds = nullptr;
 
     double* dataset = nullptr;
     long* peerLastItem = nullptr;
-    int return_value = -1;
 
     igraph_t graph;
 
     /*** Initialize the alghoritm based on user-supplied parameters ***/
     params = init();
+    if (!params) {
+        printError(PARAM_ERROR, __FUNCTION__);
+        returnValue = PARAM_ERROR;
+        goto ON_EXIT;
+    }
+
     if ( argc > 1) {
-        parse(argc, argv, params);
+        returnValue = parse(argc, argv, params);
+        if (returnValue) {
+            goto ON_EXIT;
+        }
     }
     printParameters(params);
 
     /*** Initilize dataset array ***/
     dataset = new (nothrow) double[params->ni];
     if (!dataset) {
-        cout << "Memory allocation of dataset failed" << endl;
+        printError(MEMORY_ERROR, __FUNCTION__);
+        returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
-    return_value = loadDataset(params->name_file, dataset);
-    if ( return_value < 0 ) {
-        cout << "Error on dataset loading" << endl;
+    returnValue = loadDataset(params->name_file, dataset);
+    if (returnValue) {
         goto ON_EXIT;
     }
 
     /*** Compute last item for each peer***/
     peerLastItem = new (nothrow) long[params->peers]();
     if (!peerLastItem) {
-        cout << "Memory allocation of peerLastItem failed" << endl;
-        goto ON_EXIT;
+        printError(MEMORY_ERROR, __FUNCTION__);
+        returnValue = MEMORY_ERROR;
+        goto ON_EXIT;;
     }
-    return_value = computeLastItem(params, peerLastItem);
-    if ( return_value < 0 ) {
-        cout << "Error on data set division" << endl;
+
+    returnValue = computeLastItem(params, peerLastItem);
+    if (returnValue) {
         goto ON_EXIT;
     }
 
     /*** Generate random Graph ***/
-    graph = generateGraph(params);
+    returnValue = generateGraph(graph, params->peers, params->graphType);
+    if (returnValue) {
+        goto ON_EXIT;
+    }
+    printGraphProperties(graph);
+
 
     /*** Declaration of peer sketches ***/
     dds = new (nothrow) DDS_type* [params->peers];
     if (!dds) {
-        cout << "Memory allocation of peer sketches failed" << endl;
+        printError(MEMORY_ERROR, __FUNCTION__);
+        returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
 
     /*** Distributed computation ***/
-    return_value = distributedAdd(params, dds, dataset, peerLastItem);
-    if ( return_value < 0 ) {
+    returnValue = distributedInitializeSketch(params, dds);
+    if (returnValue) {
+        cout << "Error with the add" << endl;
+        goto ON_EXIT;
+    }
+
+    /*** Distributed computation ***/
+    returnValue = distributedAdd(params, dds, dataset, peerLastItem);
+    if (returnValue) {
         cout << "Error with the add" << endl;
         goto ON_EXIT;
     }
 
     /*** Distributed communication ***/
-    return_value = distributedCommunication(params, dds, graph);
-    if ( return_value < 0 ) {
+    returnValue = distributedCommunication(params, dds, graph);
+    if ( returnValue < 0 ) {
         cout << "Error during the distributed communication" << endl;
         goto ON_EXIT;
     }
 
     /*** Quantile computing ***/
-    return_value = printQuantile(dds[0], dataset, params->ni);
-    if ( return_value < 0 ) {
+    returnValue = testQuantile(dds[0], dataset, params->ni);
+    if ( returnValue < 0 ) {
         cout << "Error during the computation of quantile" << endl;
         goto ON_EXIT;
     }
@@ -219,24 +243,40 @@ int main(int argc, char **argv) {
 
     igraph_destroy(&graph);
 
-    return return_value;
+    return returnValue;
+}
+
+int distributedInitializeSketch(Params* params, DDS_type** dds) {
+
+    for(int peerID = 0; peerID < params->peers; peerID++) {
+
+        dds[peerID] = DDS_Init(params->offset, params->bin_limit, params->alpha);
+        if (!dds[peerID]) {
+            return MEMORY_ERROR;
+        }
+
+    }
+
+    return  SUCCESS;
 }
 
 
 
 int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLastItem) {
 
+    int returnValue = -1;
+
     startTheClock();
     long start = 0;
     for(int peerID = 0; peerID < params->peers; peerID++){
 
-        dds[peerID] = DDS_Init(params->offset, params->bin_limit, params->alpha);
-
         for ( long i = start; i <= peerLastItem[peerID]; i++ ) {
-            DDS_AddCollapse(dds[peerID], dataset[i]);
+            returnValue = DDS_AddCollapse(dds[peerID], dataset[i]);
+            if (returnValue) {
+                return returnValue;
+            }
         }
 
-        //cout << "PeerID = " << peerID << " sketch size = " << DDS_Size(dds[peerID]) << " alpha = " << dds[peerID]->alpha << endl;
         start = peerLastItem[peerID] + 1;
     }
 
@@ -245,21 +285,28 @@ int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLa
         cout <<"Time (seconds) required to add all elements for all the peers: " << distributed_time << "\n";
     }
 
-    return 0;
+    return returnValue;
 }
 
 int distributedFinalizeMerge(Params* params, DDS_type** dds, double* dimestimate) {
 
+    int returnValue = -1;
+
     /*** Distributed computation simulation ***/
     // Finalize the sum by dividing each value by dimestimate[peerID]
     for(int peerID = 0; peerID < params->peers; peerID++){
-        DDS_finalizeMerge(dds[peerID], dimestimate[peerID]);
+        returnValue = DDS_finalizeMerge(dds[peerID], dimestimate[peerID]);
+        if (returnValue) {
+            return returnValue;
+        }
     }
 
-    return 0;
+    return returnValue;
 }
 
 int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
+
+    int returnValue = -1;
 
     double* dimestimate = nullptr;
     double* prevestimate = nullptr;
@@ -274,7 +321,8 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
     // Weight for sum only one peer is setted to 1
     dimestimate = new (nothrow) double[params->peers]();
     if(!dimestimate) {
-        cout << "Memory allocation of peer sketches failed" << endl;
+        printError(MEMORY_ERROR, __FUNCTION__);
+        returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
     dimestimate[0] = 1;
@@ -282,23 +330,28 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
     // Weight at rount t-1
     prevestimate = new (nothrow) double[params->peers]();
     if(!prevestimate) {
-        cout << "Memory allocation of peer sketches failed" << endl;
+        printError(MEMORY_ERROR, __FUNCTION__);
+        returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
 
     // Converged peers
     converged = new (nothrow) bool[params->peers]();
     if(!converged) {
-        cout << "Memory allocation of peer sketches failed" << endl;
+        printError(MEMORY_ERROR, __FUNCTION__);
+        returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
-    for(int i = 0; i < params->peers; i++)
+
+    for(int i = 0; i < params->peers; i++) {
         converged[i] = false;
+    }
 
     // Local convergence tolerance
     convRounds = new (nothrow) int[params->peers]();
     if(!convRounds) {
-        cout << "Memory allocation of peer sketches failed" << endl;
+        printError(MEMORY_ERROR, __FUNCTION__);
+        returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
 
@@ -331,8 +384,15 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
                 igraph_integer_t edgeID;
                 igraph_get_eid(&graph, &edgeID, peerID, neighborID, IGRAPH_UNDIRECTED, 1);
 
-                DDS_merge(dds[peerID], dds[neighborID]);
-                DDS_replaceBinMap(dds[peerID], dds[neighborID]);
+                returnValue = DDS_MergeCollapse(dds[peerID], dds[neighborID]);
+                if (returnValue) {
+                    goto ON_EXIT;
+                }
+
+                returnValue = DDS_replaceBinMap(dds[peerID], dds[neighborID]);
+                if (returnValue) {
+                    goto ON_EXIT;
+                }
 
                 double mean = (dimestimate[peerID] + dimestimate[neighborID]) / 2;
                 dimestimate[peerID] = mean;
@@ -382,7 +442,10 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
         cout <<"Time (seconds) required to reach convergence: " << comunication_time << "\n";
     }
 
-    distributedFinalizeMerge(params, dds, dimestimate);
+    returnValue = distributedFinalizeMerge(params, dds, dimestimate);
+    if (returnValue) {
+        goto ON_EXIT;
+    }
 
     cout << "Number of peer: " << 1/dimestimate[0] << endl;
 
@@ -401,7 +464,7 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
         delete[] convRounds, convRounds = nullptr;
     }
 
-    return 0;
+    return returnValue;
 }
 
 int computeLastItem(Params* params, long* peerLastItem) {
@@ -444,18 +507,20 @@ int computeLastItem(Params* params, long* peerLastItem) {
     //cout<< "sum: " << sum << endl;
     if(sum != params->ni) {
         cerr << "ERROR: ni = "<< params->ni << "!= sum = " << sum << endl;
-        return -1;
+        printError(DATASET_DIVISION_ERROR, __FUNCTION__);
+        return DATASET_DIVISION_ERROR;
     }
 
     cout.flush();
 
-    return 0;
+    return SUCCESS;
 }
 
 Params* init() {
 
     // Initialize the sketch based on user-supplied parameters
     Params *params = nullptr;
+    int rows = 0;
 
     params = new (nothrow) Params;
     if(!params){
@@ -464,10 +529,11 @@ Params* init() {
     }
 
     params->name_file = DEFAULT_FILENAME;
-    params->ni = getDatasetSize(params->name_file);
-    if ( params->ni < 0) {
+    int returnValue = getDatasetSize(params->name_file, rows);
+    if ( returnValue < 0) {
         return nullptr;
     }
+    params->ni = rows;
     params->domainSize = DEFAULT_DOMAIN_SIZE;
     params->graphType = DEFAULT_GRAPH_TYPE;
     params->peers = DEFAULT_PEERS;
@@ -584,11 +650,12 @@ int parse(int argc, char **argv, Params* params) {
             params->autoseed = true;
         } else {
             usage(argv[0]);
-            return -2;
+            printError(USAGE_ERROR, __FUNCTION__);
+            return USAGE_ERROR;
         }
     }
 
-    return 0;
+    return SUCCESS;
 }
 
 void usage(char* cmd)
@@ -624,99 +691,104 @@ double stopTheClock() {
     return time_span.count();
 }
 
-long getDatasetSize(const string &name_file) {
+int getDatasetSize(const string &name_file, int &rows) {
+
+    rows = 0;
 
     ifstream inputFile(name_file);
-    if (inputFile.fail()) {
-        cout << "Error " << name_file << " not opened" << endl;
-        return -5;
-    }
     string line;
+    if(inputFile.is_open()){
+        while (getline(inputFile, line))
+            rows++;
+    } else {
+        printError(FILE_ERROR, __FUNCTION__);
+        return FILE_ERROR;
+    }
 
-    long rows = 0;
-
-    while (getline(inputFile, line))
-        rows++;
-
-    return rows;
+    return SUCCESS;
 }
 
 int loadDataset(const string &name_file, double *dataset) {
 
+    if (!dataset) {
+        printError(NULL_POINTER_ERROR, __FUNCTION__);
+        return NULL_POINTER_ERROR;
+    }
+
     ifstream inputFile(name_file);
     string line;
-
     int row = 0;
 
-    while (getline(inputFile, line)) {
-        dataset[row] = stod(line);
-        row++;
+    if(inputFile.is_open()){
+        while (getline(inputFile, line)) {
+
+            try {
+                dataset[row] = stod(line);
+            }
+            catch (int e) {
+                printError(FILE_ERROR, __FUNCTION__);
+                inputFile.close();
+                return FILE_ERROR;
+            }
+
+            row++;
+        }
+    } else {
+        printError(FILE_ERROR, __FUNCTION__);
+        return FILE_ERROR;
     }
 
-    return 0;
+    inputFile.close();
+
+    return SUCCESS;
 }
+int testQuantile(DDS_type *dds, double* stream, int n_element) {
 
-igraph_t generateGraph(Params* params) {
-    /*** Graph generation ***/
-    // turn on attribute handling in igraph
-    igraph_i_set_attribute_table(&igraph_cattribute_table);
+    cout << "Test quantile with alpha=" << dds->alpha << endl;
 
-    // seed igraph PRNG
-    igraph_rng_seed(igraph_rng_default(), 42);
-
-    startTheClock();
-    // generate a connected random graph
-    igraph_t graph = generateRandomGraph(params->graphType, params->peers);
-
-    double graphgentime = stopTheClock();
-    if (!params->outputOnFile) {
-        cout <<"Time (seconds) required to generate the random graph: " << graphgentime << "\n";
+    if (!stream) {
+        printError(NULL_POINTER_ERROR, __FUNCTION__);
+        return NULL_POINTER_ERROR;
     }
 
-    // determine minimum and maximum vertex degree for the graph
-    igraph_vector_t result;
-    igraph_real_t mindeg;
-    igraph_real_t maxdeg;
-
-    igraph_vector_init(&result, 0);
-    igraph_degree(&graph, &result, igraph_vss_all(), IGRAPH_ALL, IGRAPH_NO_LOOPS);
-    igraph_vector_minmax(&result, &mindeg, &maxdeg);
-    if (!params->outputOnFile) {
-        cout << "Minimum degree is "  <<  mindeg << ", Maximum degree is " << maxdeg << "\n";
+    if(!dds){
+        printError(SKETCH_ERROR, __FUNCTION__);
+        return SKETCH_ERROR;
     }
 
-    igraph_vector_destroy(&result);
-
-    return graph;
-}
-
-int printQuantile(DDS_type* dds, double* stream, long n_element) {
-
-    cout << endl << "Quantile with alpha = " << dds->alpha << endl;
+    int returnValue = -1;
 
     // Determine the quantile
     float q[] = { 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
     int n_q = 11;
 
+    cout << string(60, '-') << endl;
+    cout << "|" << setw(10) << "quantile" << "|" << setw(15) << "estimate" << "|" << setw(15) << "real" << "|"  << setw(15)<< "error" << "|" << endl;
+    cout << string(60, '-') << endl;
+
     for ( int i = 0; i < n_q; i++ ) {
 
-        int idx = floor(1+q[i]*(n_element-1));
+        int idx = floor(1+q[i]*double(n_element-1));
         // determine the correct answer
         // i.e., the number stored at the index (idx-1) in the sorted permutation of the vector
         // note that we are not sorting the vector, we are using the quickselect() algorithm
         // which in C++ is available as std::nth_element
         nth_element(stream, stream + (idx-1), stream +  n_element);
-        double quantile = DDS_GetQuantile(dds, q[i]);
-        if (quantile == numeric_limits<double>::quiet_NaN()) {
-            cout << "q must be in the interval [0,1]" << endl;
-            return  -2;
+        double quantile;
+        returnValue = DDS_GetQuantile(dds, q[i], quantile);
+        if (returnValue < 0 ) {
+            return returnValue;
         }
+
         double error = abs((quantile-stream[idx-1])/stream[idx-1]);
 
-        cout << "q: " << std::setw(4) << q[i] << " estimate: " << std::setw(10) << quantile << " real: " << std::setw(10) << stream[idx-1] << " error: " << std::setw(10) << error << endl;
+        cout << "|" << setw(10) << q[i]<< "|" << setw(15) << quantile << "|" << setw(15) << stream[idx-1] << "|"  << setw(15)<< error << "|" << endl;
+
     }
 
-    return  0;
+    cout << string(60, '-') << endl;
+
+    return  returnValue;
 }
 
 int printParameters(Params* params){
@@ -724,7 +796,7 @@ int printParameters(Params* params){
         printf("\n\nPARAMETERS:\n");
         cout << "dataset = "    << params->name_file << "\n";
         cout << "n° points = "  << params->ni << "\n";
-        cout << "graph type = " << printGraphType(params->graphType);
+        cout << "graph type = ", printGraphType(params->graphType);
         cout << "peers = " << params->peers << "\n";
         cout << "fan-out = " << params->fanOut << "\n";
         cout << "local convergence tolerance = "<< params->convThreshold << "\n";

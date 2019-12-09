@@ -3,6 +3,7 @@
 //
 #include <igraph/igraph.h>
 #include <string>
+#include "error.h"
 
 using namespace std;
 
@@ -12,7 +13,7 @@ using namespace std;
  * @param radius            Graph radius
  * @return                  Connected random graph using the geometric model
  */
-extern igraph_t generateGeometricGraph(igraph_integer_t n, igraph_real_t radius);
+extern int generateGeometricGraph(igraph_t &G_graph, igraph_integer_t n, igraph_real_t radius);
 
 /**
  * @brief                   This function generates a connected random graph using the Barabasi-Albert model
@@ -22,7 +23,7 @@ extern igraph_t generateGeometricGraph(igraph_integer_t n, igraph_real_t radius)
  * @param A                 A = The probability that a vertex is cited is proportional to d^power+A, where d is its degree, power and A are given by argument
  * @return                  Connected random graph using the Barabasi-Albert model
  */
-extern igraph_t generateBarabasiAlbertGraph(igraph_integer_t n, igraph_real_t power, igraph_integer_t m, igraph_real_t A);
+extern int generateBarabasiAlbertGraph(igraph_t &BA_graph, igraph_integer_t n, igraph_real_t power, igraph_integer_t m, igraph_real_t A);
 
 /**
  * @brief                   This function generates a connected random graph using the Erdos-Renyi model
@@ -31,7 +32,7 @@ extern igraph_t generateBarabasiAlbertGraph(igraph_integer_t n, igraph_real_t po
  * @param param
  * @return                  Connected random graph using the Erdos-Renyi model
  */
-extern igraph_t generateErdosRenyiGraph(igraph_integer_t n, igraph_erdos_renyi_t type, igraph_real_t param);
+extern int generateErdosRenyiGraph(igraph_t &ER_graph, igraph_integer_t n, igraph_erdos_renyi_t type, igraph_real_t param);
 
 /**
  * @brief                   This function generates a connected regular random graph
@@ -39,7 +40,7 @@ extern igraph_t generateErdosRenyiGraph(igraph_integer_t n, igraph_erdos_renyi_t
  * @param k                 The degree of each vertex in an undirected graph. For undirected graphs, at least one of k and the number of vertices must be even.
  * @return                  Connected regular random graph
  */
-extern igraph_t generateRegularGraph(igraph_integer_t n, igraph_integer_t k);
+extern int generateRegularGraph(igraph_t &R_graph, igraph_integer_t n, igraph_integer_t k);
 
 /**
  * @brief                   This function generate a random graph
@@ -47,10 +48,14 @@ extern igraph_t generateRegularGraph(igraph_integer_t n, igraph_integer_t k);
  * @param n                 The number of vertices in the graph
  * @return                  Random graph
  */
-extern igraph_t generateRandomGraph(int type, int n);
+extern int generateRandomGraph(igraph_t &random_graph, int type, int n);
+
+extern int generateGraph(igraph_t &graph, int peers, int graphType);
+
+extern void printGraphProperties(igraph_t &graph);
 
 /**
  * \brief                   This function prints the name of graph distribution.
  * @param type              Graph distribution:\n 1 geometric\n 2 Barabasi-Albert\n 3 Erdos-Renyi\n 4 regular (clique)
  */
-extern string printGraphType(int type);
+extern void printGraphType(int type);
