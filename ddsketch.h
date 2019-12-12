@@ -36,7 +36,7 @@ typedef struct DDS_type{
     /// this map implements the bins of DDSketch
     map<int, double> *bins;
     /// this parameter keeps track of the number of items added to the sketch
-    int n;
+    double n;
 
     /// Min key on the first/last bucket
     int min;

@@ -17,17 +17,22 @@
 #include <igraph/igraph.h>
 #include <cstring>
 #include <random>
-#include <map>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
+#include <codecvt>
 #include "ddsketch.h"
 #include "graph.h"
+
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define GREEN       "\x1B[32m"
+#define RESET       "\033[0m"
 
 using namespace std;
 using namespace std::chrono;
 
 const string        DEFAULT_FILENAME = "../normal_mean_2_stdev_3.csv";
+const string        DEFAULT_OUTPUT_FILE = "out.txt";
 const uint32_t      DEFAULT_DOMAIN_SIZE = 1048575;
 const int           DEFAULT_GRAPH_TYPE = 2;
 const int           DEFAULT_PEERS = 1000;
@@ -85,14 +90,32 @@ void startTheClock();
  */
 double stopTheClock();
 
+/**
+ * @brief                   Parmas costructor
+ * @return                  An allocated Params data structure with default parameters
+ */
 Params* init();
+
+/**
+ * @brief                   This function parses command-line arguments
+ * @param argc              Count of command line arguments
+ * @param argv              Command line arguments
+ * @param params            Params data structure
+ * @return                  0 in case of success, -13 in case of usage error
+ */
 int parse(int argc, char** argv, Params* params);
+
+/**
+ * @brief                   This function prints the optional parameters of the application
+ * @param cmd               The name of the application.
+ */
 void usage(char* cmd);
 
 /**
  * \brief                   This function computes the dimension of the dataset
  * @param name_file         Name of dataset
- * @return                  Return the number of element in the dataset(row)
+ * @param row               Where the number of row is stored
+ * @return                  0 in case of success, -3 in case of file error
  */
 int getDatasetSize(const string &name_file, int &rows);
 
@@ -103,9 +126,58 @@ int getDatasetSize(const string &name_file, int &rows);
  * @return                  An array containing the whole dataset
  */
 int loadDataset(const string &name_file, double *dataset);
+
+/**
+ * @brief
+ * @param params
+ * @param peerLastItem
+ * @return
+ */
+int computeLastItem(Params* params, long* peerLastItem);
+
+/**
+ * @brief
+ * @param params
+ * @return
+ */
+int printParameters(Params* params);
+
+string getParameters(Params* params);
+
+/**
+ * @brief
+ * @param params
+ * @param dds
+ * @return
+ */
 int distributedInitializeSketch(Params* params, DDS_type** dds);
+
+/**
+ * @brief
+ * @param params
+ * @param dds
+ * @param dataset
+ * @param peerLastItem
+ * @return
+ */
 int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLastItem);
+
+/**
+ * @brief
+ * @param params
+ * @param dds
+ * @param graph
+ * @return
+ */
 int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph);
+
+/**
+ * @brief
+ * @param params
+ * @param dds
+ * @param dimestimate
+ * @return
+ */
 int distributedFinalizeMerge(Params* params, DDS_type** dds, double* dimestimate);
 
 /**
@@ -115,9 +187,7 @@ int distributedFinalizeMerge(Params* params, DDS_type** dds, double* dimestimate
  * @param n_element     Number of element
  * @return              0: success; \n-2: error;
  */
-int testQuantile(DDS_type *dds, double* stream, int n_element);
-int computeLastItem(Params* params, long* peerLastItem);
-int printParameters(Params* params);
+int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &output);
 
 high_resolution_clock::time_point t1, t2;
 
@@ -127,6 +197,9 @@ int main(int argc, char **argv) {
 
     int returnValue = -1;
 
+    ofstream out;
+    stringstream output;
+
     Params *params = nullptr;
     DDS_type** dds = nullptr;
 
@@ -135,7 +208,7 @@ int main(int argc, char **argv) {
 
     igraph_t graph;
 
-    /*** Initialize the alghoritm based on user-supplied parameters ***/
+    /*** Initialize the alghoritm based on default parameters ***/
     params = init();
     if (!params) {
         printError(PARAM_ERROR, __FUNCTION__);
@@ -143,13 +216,33 @@ int main(int argc, char **argv) {
         goto ON_EXIT;
     }
 
+    /*** Parse user-supplied parameters ***/
     if ( argc > 1) {
         returnValue = parse(argc, argv, params);
         if (returnValue) {
             goto ON_EXIT;
         }
     }
-    printParameters(params);
+
+    params->outputFilename = DEFAULT_OUTPUT_FILE;
+    params->outputOnFile = true;
+
+    /*** Open file for output ***/
+    if (params->outputOnFile) {
+        out.open(params->outputFilename);
+        if (!out.is_open()) {
+            printError(FILE_ERROR, __FUNCTION__);
+            returnValue = FILE_ERROR;
+            goto ON_EXIT;
+        }
+    }
+
+    if(!params->outputOnFile) {
+        cout << BOLDRED << "\nPARAMETERS:\n" << RESET;
+        cout << getParameters(params);
+    } else {
+        out << getParameters(params);
+    }
 
     /*** Initilize dataset array ***/
     dataset = new (nothrow) double[params->ni];
@@ -181,8 +274,12 @@ int main(int argc, char **argv) {
     if (returnValue) {
         goto ON_EXIT;
     }
-    printGraphProperties(graph);
 
+    if(!params->outputOnFile) {
+        cout << printGraphProperties(graph);
+    } else {
+        out << printGraphProperties(graph);
+    }
 
     /*** Declaration of peer sketches ***/
     dds = new (nothrow) DDS_type* [params->peers];
@@ -191,6 +288,7 @@ int main(int argc, char **argv) {
         returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
+
 
     /*** Distributed computation ***/
     returnValue = distributedInitializeSketch(params, dds);
@@ -214,10 +312,17 @@ int main(int argc, char **argv) {
     }
 
     /*** Quantile computing ***/
-    returnValue = testQuantile(dds[0], dataset, params->ni);
+    output.str("");
+    returnValue = testQuantile(dds[0], dataset, params->ni, output);
     if ( returnValue < 0 ) {
         cout << "Error during the computation of quantile" << endl;
         goto ON_EXIT;
+    }
+
+    if(!params->outputOnFile) {
+        cout << output.str();
+    } else {
+        out << output.str();
     }
 
     ON_EXIT:
@@ -232,13 +337,17 @@ int main(int argc, char **argv) {
 
     if(dds != nullptr) {
         for (int i = 0; i < params->peers; ++i) {
-            delete dds[i], dds[i] = nullptr;
+            DDS_Destroy(dds[i]), dds[i] = nullptr;
         }
         delete dds, dds = nullptr;
     }
 
     if(params != nullptr) {
         delete  params, params = nullptr;
+    }
+
+    if (out.is_open()) {
+        out.close();
     }
 
     igraph_destroy(&graph);
@@ -248,14 +357,24 @@ int main(int argc, char **argv) {
 
 int distributedInitializeSketch(Params* params, DDS_type** dds) {
 
+    cout << BOLDRED << "\nStart distributed inizialization.." << RESET << endl;
+
+    int returnValue = -1;
+
+    startTheClock();
+
     for(int peerID = 0; peerID < params->peers; peerID++) {
 
+        // Initialization peers sketches
         dds[peerID] = DDS_Init(params->offset, params->bin_limit, params->alpha);
         if (!dds[peerID]) {
             return MEMORY_ERROR;
         }
 
     }
+
+    double distributed_time = stopTheClock();
+    cout <<"Time (seconds) required to initialize all sketch for all the peers: " << distributed_time << "\n";
 
     return  SUCCESS;
 }
@@ -264,12 +383,15 @@ int distributedInitializeSketch(Params* params, DDS_type** dds) {
 
 int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLastItem) {
 
+    cout << BOLDRED << "\nStart distributed computation.." << RESET << endl;
+
     int returnValue = -1;
 
     startTheClock();
     long start = 0;
     for(int peerID = 0; peerID < params->peers; peerID++){
 
+        // Adding elements to the sketch
         for ( long i = start; i <= peerLastItem[peerID]; i++ ) {
             returnValue = DDS_AddCollapse(dds[peerID], dataset[i]);
             if (returnValue) {
@@ -281,9 +403,7 @@ int distributedAdd(Params* params, DDS_type** dds, double* dataset, long* peerLa
     }
 
     double distributed_time = stopTheClock();
-    if (!params->outputOnFile) {
-        cout <<"Time (seconds) required to add all elements for all the peers: " << distributed_time << "\n";
-    }
+    cout <<"Time (seconds) required to add all elements for all the peers: " << distributed_time << "\n";
 
     return returnValue;
 }
@@ -292,7 +412,6 @@ int distributedFinalizeMerge(Params* params, DDS_type** dds, double* dimestimate
 
     int returnValue = -1;
 
-    /*** Distributed computation simulation ***/
     // Finalize the sum by dividing each value by dimestimate[peerID]
     for(int peerID = 0; peerID < params->peers; peerID++){
         returnValue = DDS_finalizeMerge(dds[peerID], dimestimate[peerID]);
@@ -305,6 +424,8 @@ int distributedFinalizeMerge(Params* params, DDS_type** dds, double* dimestimate
 }
 
 int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
+
+    cout << BOLDRED << "\nStart distributed communication.." << RESET << endl;
 
     int returnValue = -1;
 
@@ -356,7 +477,7 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
     }
 
     if (!params->outputOnFile) {
-        cout <<"\nStarting distributed agglomeration merge..." << endl;
+        cout <<"Starting distributed agglomeration merge..." << endl;
     }
 
     startTheClock();
@@ -434,20 +555,18 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t graph) {
             }
         }
         rounds++;
-        cerr << "\r Active peers: " << Numberofconverged << " - Rounds: " << rounds << "          " << endl;
+        cout << GREEN <<" Active peers: " << Numberofconverged << " - Rounds: " << rounds << RESET << endl;
         params->roundsToExecute--;
     }
     comunication_time = stopTheClock();
-    if (!params->outputOnFile) {
-        cout <<"Time (seconds) required to reach convergence: " << comunication_time << "\n";
-    }
+    cout <<"\nTime (seconds) required to reach convergence: " << comunication_time << "\n";
 
     returnValue = distributedFinalizeMerge(params, dds, dimestimate);
     if (returnValue) {
         goto ON_EXIT;
     }
 
-    cout << "Number of peer: " << 1/dimestimate[0] << endl;
+    cout << "Estimate of peers number: " << 1/dimestimate[0] << endl;
 
     ON_EXIT:
 
@@ -742,9 +861,9 @@ int loadDataset(const string &name_file, double *dataset) {
 
     return SUCCESS;
 }
-int testQuantile(DDS_type *dds, double* stream, int n_element) {
+int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &output) {
 
-    cout << "Test quantile with alpha=" << dds->alpha << endl;
+    output << "\nTest quantile with alpha=" << dds->alpha << endl << endl;
 
     if (!stream) {
         printError(NULL_POINTER_ERROR, __FUNCTION__);
@@ -762,9 +881,9 @@ int testQuantile(DDS_type *dds, double* stream, int n_element) {
     float q[] = { 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
     int n_q = 11;
 
-    cout << string(60, '-') << endl;
-    cout << "|" << setw(10) << "quantile" << "|" << setw(15) << "estimate" << "|" << setw(15) << "real" << "|"  << setw(15)<< "error" << "|" << endl;
-    cout << string(60, '-') << endl;
+    output  << string(60, '-') << endl
+            << "|" << setw(10) << "quantile" << "|" << setw(15) << "estimate" << "|" << setw(15) << "real" << "|"  << setw(15)<< "error" << "|" << endl
+            << string(60, '-') << endl;
 
     for ( int i = 0; i < n_q; i++ ) {
 
@@ -782,30 +901,28 @@ int testQuantile(DDS_type *dds, double* stream, int n_element) {
 
         double error = abs((quantile-stream[idx-1])/stream[idx-1]);
 
-        cout << "|" << setw(10) << q[i]<< "|" << setw(15) << quantile << "|" << setw(15) << stream[idx-1] << "|"  << setw(15)<< error << "|" << endl;
+        output << "|" << setw(10) << q[i]<< "|" << setw(15) << quantile << "|" << setw(15) << stream[idx-1] << "|"  << setw(15)<< error << "|" << endl;
 
     }
 
-    cout << string(60, '-') << endl;
+    output << string(60, '-') << endl;
 
     return  returnValue;
 }
 
-int printParameters(Params* params){
-    if (!params->outputOnFile) {
-        printf("\n\nPARAMETERS:\n");
-        cout << "dataset = "    << params->name_file << "\n";
-        cout << "n° points = "  << params->ni << "\n";
-        cout << "graph type = ", printGraphType(params->graphType);
-        cout << "peers = " << params->peers << "\n";
-        cout << "fan-out = " << params->fanOut << "\n";
-        cout << "local convergence tolerance = "<< params->convThreshold << "\n";
-        cout << "number of consecutive rounds in which a peer must locally converge = "<< params->convLimit << "\n";
-        cout << "alpha = " << params->alpha << "\n";
-        cout << "offset = " << params->offset << "\n";
-        cout << "bin_limit = " << params->bin_limit << "\n";
-        cout << "\n\n";
-    }
+string getParameters(Params* params){
 
-    return 0;
+    stringstream parameters;
+    parameters << "dataset = "    << params->name_file << "\n"
+               << "n° points = "  << params->ni << "\n"
+               << "graph type = " << printGraphType(params->graphType)
+               << "peers = " << params->peers << "\n"
+               << "fan-out = " << params->fanOut << "\n"
+               << "local convergence tolerance = "<< params->convThreshold << "\n"
+               << "number of consecutive rounds in which a peer must locally converge = "<< params->convLimit << "\n"
+               << "alpha = " << params->alpha << "\n"
+               << "offset = " << params->offset << "\n"
+               << "bin_limit = " << params->bin_limit << "\n";
+
+    return parameters.str();
 }

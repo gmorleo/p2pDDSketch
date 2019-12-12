@@ -50,12 +50,23 @@ extern int generateRegularGraph(igraph_t &R_graph, igraph_integer_t n, igraph_in
  */
 extern int generateRandomGraph(igraph_t &random_graph, int type, int n);
 
+/**
+ * @brief
+ * @param graph
+ * @param peers
+ * @param graphType
+ * @return
+ */
 extern int generateGraph(igraph_t &graph, int peers, int graphType);
 
-extern void printGraphProperties(igraph_t &graph);
-
 /**
- * \brief                   This function prints the name of graph distribution.
+ * @brief                   This function prints the name of graph distribution.
  * @param type              Graph distribution:\n 1 geometric\n 2 Barabasi-Albert\n 3 Erdos-Renyi\n 4 regular (clique)
  */
-extern void printGraphType(int type);
+extern string printGraphProperties(igraph_t &graph);
+
+/**
+ * @brief                   This function prints the name of graph distribution.
+ * @param type              Graph distribution:\n 1 geometric\n 2 Barabasi-Albert\n 3 Erdos-Renyi\n 4 regular (clique)
+ */
+extern string printGraphType(int type);

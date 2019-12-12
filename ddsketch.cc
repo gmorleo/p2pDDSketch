@@ -17,6 +17,9 @@ University of Salento, Italy
 #include "ddsketch.h"
 #include "error.h"
 
+#define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
+#define RESET   "\033[0m"
+
 DDS_type *DDS_Init(int offset, int bin_limit, double alpha)
 {
 
@@ -569,26 +572,31 @@ int DDS_MergeCollapse(DDS_type *dds1, DDS_type *dds2) {
         return returnValue;
     }
 
-    returnValue = DDS_Size(dds1, size2);
+    returnValue = DDS_Size(dds2, size2);
     if (returnValue) {
         return returnValue;
     }
     //cout << "Size before merge sketch1 = " << size1 << " sketch2 = " << size2 << endl;
 
     // Check if the bins have the same alpha
-    while (fabs(dds1->alpha - dds2->alpha) > 0.0001){
+    while (fabs(dds1->alpha - dds2->alpha) > 0.001){
         if (dds1->alpha < dds2->alpha) {
+            //cout << endl << BOLDRED << "Collapsing first sketch..." << RESET << endl;
             returnValue = DDS_Collapse(dds1);
             if (returnValue) {
                 return returnValue;
             }
         } else {
+            //cout << endl << BOLDRED << "Collapsing second sketch..." << RESET << endl;
             returnValue = DDS_Collapse(dds2);
             if (returnValue) {
                 return returnValue;
             }
         }
     }
+    
+    //cout << endl << BOLDRED << "Size of first sketch before merge: " << dds1->bins->size() << RESET << endl;
+    //cout << endl << BOLDRED << "Size of second sketch before merge: " << dds2->bins->size() << RESET << endl;
 
     // Merge function merges the bins in dds1 with the bins of dds2
     // dds1 is the result of the merge operation
@@ -606,6 +614,8 @@ int DDS_MergeCollapse(DDS_type *dds1, DDS_type *dds2) {
     for ( auto & bin  : (*dds2->bins)) {
         (*(dds1->bins))[bin.first] += bin.second/2;
     }
+    
+    //cout << endl << BOLDRED << "Size of first sketch after merge but before optional collapse: " << dds1->bins->size() << RESET << endl;
 
     // Check if the new bin size is greater than bin limit
     returnValue = DDS_Size(dds1, size1);
@@ -616,7 +626,7 @@ int DDS_MergeCollapse(DDS_type *dds1, DDS_type *dds2) {
     while ( size1 > dds1->bin_limit ) {
 
         // If the bin size is more then the bin limit, we need to collapse using gamma^2 instead of gamma
-
+        //cout << endl << BOLDRED << "Collapsing the merged sketch..." << RESET << endl;
         returnValue = DDS_Collapse(dds1);
         if (returnValue) {
             return returnValue;
@@ -653,7 +663,7 @@ int DDS_MergeCollapseLastBucket(DDS_type *dds1, DDS_type *dds2) {
         return returnValue;
     }
 
-    returnValue = DDS_Size(dds1, size2);
+    returnValue = DDS_Size(dds2, size2);
     if (returnValue) {
         return returnValue;
     }
@@ -661,7 +671,7 @@ int DDS_MergeCollapseLastBucket(DDS_type *dds1, DDS_type *dds2) {
     //cout << "Size before merge sketch1 = " << size1 << " sketch2 = " << size2 << endl;
 
     // Check if the bins have the same alpha
-    if (fabs(dds1->alpha - dds2->alpha) > 0.0001){
+    if (fabs(dds1->alpha - dds2->alpha) > 0.001){
         printError(MERGE_ERROR, __FUNCTION__);
         return MERGE_ERROR;
     }
@@ -722,7 +732,7 @@ int DDS_MergeCollapseFirstBucket(DDS_type *dds1, DDS_type *dds2) {
         return returnValue;
     }
 
-    returnValue = DDS_Size(dds1, size2);
+    returnValue = DDS_Size(dds2, size2);
     if (returnValue) {
         return returnValue;
     }
@@ -730,7 +740,7 @@ int DDS_MergeCollapseFirstBucket(DDS_type *dds1, DDS_type *dds2) {
     //cout << "Size before merge sketch1 = " << size1 << " sketch2 = " << size2 << endl;
 
     // Check if the bins have the same alpha
-    if (fabs(dds1->alpha - dds2->alpha) > 0.0001){
+    if (fabs(dds1->alpha - dds2->alpha) > 0.001){
         printError(MERGE_ERROR, __FUNCTION__);
         return MERGE_ERROR;
     }

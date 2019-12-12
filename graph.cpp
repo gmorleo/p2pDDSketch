@@ -3,6 +3,7 @@
 //
 
 #include <iostream>
+#include <sstream>
 #include "graph.h"
 
 int generateGeometricGraph(igraph_t &G_graph, igraph_integer_t n, igraph_real_t radius)
@@ -164,6 +165,7 @@ int generateRandomGraph(igraph_t &random_graph, int type, int n)
 
 
 int generateGraph(igraph_t &graph, int peers, int graphType) {
+
     int returnValue = -1;
     // turn on attribute handling in igraph
     igraph_i_set_attribute_table(&igraph_cattribute_table);
@@ -178,39 +180,37 @@ int generateGraph(igraph_t &graph, int peers, int graphType) {
 }
 
 
-void printGraphProperties(igraph_t &graph) {
+string printGraphProperties(igraph_t &graph) {
+
     igraph_vector_t result;
     igraph_real_t mindeg;
     igraph_real_t maxdeg;
+    stringstream string_result;
 
     igraph_vector_init(&result, 0);
     igraph_degree(&graph, &result, igraph_vss_all(), IGRAPH_ALL, IGRAPH_NO_LOOPS);
     igraph_vector_minmax(&result, &mindeg, &maxdeg);
 
-    cout << "Minimum degree is "  <<  mindeg << ", Maximum degree is " << maxdeg << "\n";
+    string_result << "Graph properties:\nminimum degree= "  <<  mindeg << ";\nmaximum degree= " << maxdeg << ";\n\n";
 
     igraph_vector_destroy(&result);
+
+    return string_result.str();
 }
 
-
-/**
- * \brief                   This function prints the name of graph distribution.
- * @param type              Graph distribution:\n 1 geometric\n 2 Barabasi-Albert\n 3 Erdos-Renyi\n 4 regular (clique)
- */
-void printGraphType(int type)
+string printGraphType(int type)
 {
-
+    string graph_name;
     switch (type) {
         case 1:
-            cout << "Geometric random graph\n";
+            graph_name = "Geometric random graph\n";
         case 2:
-            cout << "Barabasi-Albert random graph\n";
+            graph_name = "Barabasi-Albert random graph\n";
         case 3:
-            cout << "Erdos-Renyi random graph\n";
+            graph_name = "Erdos-Renyi random graph\n";
         case 4:
-            cout << "Regular random graph\n";
-        default:
-            cout << "asd";
+            graph_name = "Regular random graph\n";
     }
 
+    return graph_name;
 }
