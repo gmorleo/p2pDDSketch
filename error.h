@@ -21,8 +21,9 @@ const int GRAPH_GENERATION_ERROR = -10;
 const int UNKNOWN_GRAPH_TYPE = -11;
 const int PARAM_ERROR = -12;
 const int USAGE_ERROR = -13;
-const int DATASET_DIVISION_ERROR = -14;
-const int EXIT = -15;
+const int CONFLICTING_OPTIONS = -14;
+const int DATASET_DIVISION_ERROR = -15;
+const int EXIT = -16;
 
 using namespace std;
 

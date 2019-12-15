@@ -238,7 +238,7 @@ int DDS_AddCollapse(DDS_type *dds, double item) {
     }
 
     while ( size > dds->bin_limit ) {
-        // While the bin size is greater than bin_limit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
+        // While the bin size is greater than binLimit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
 
         // collapse with gamma^2
         returnValue = DDS_Collapse(dds);
@@ -284,7 +284,7 @@ int DDS_AddCollapseLastBucket(DDS_type *dds, double item) {
     }
 
     if ( size > dds->bin_limit ) {
-        // If the bin size is greater than bin_limit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
+        // If the bin size is greater than binLimit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
 
         // collapse the second last bucket into the last bucket
         returnValue = DDS_CollapseLastBucket(dds);
@@ -326,7 +326,7 @@ int DDS_AddCollapseFirstBucket(DDS_type *dds, double item) {
     }
 
     if ( size > dds->bin_limit ) {
-        // If the bin size is greater than bin_limit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
+        // If the bin size is greater than binLimit, we need to increase alpha and adapt all of the existing buckets to the new alpha value
 
         // collapse the second bucket into the first bucket
         returnValue = DDS_CollapseFirstBucket(dds);

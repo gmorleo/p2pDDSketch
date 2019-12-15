@@ -108,7 +108,7 @@ extern int DDS_GetValue(DDS_type *dds, int key, double &value);
 extern int DDS_GetBounds(DDS_type *dds, int k, int i, double &min, double &max);
 
 /**
- * @brief
+ * @brief               This function computes the key of the new bucket
  * @param dds           The sketch
  * @param i             the bucket index
  * @param of            1 or -1 the value to add to the key
@@ -251,11 +251,17 @@ extern int DDS_DeleteCollapseFirstBucket(DDS_type *dds, double item);
 extern int DDS_MergeCollapseFirstBucket(DDS_type *dds1, DDS_type *dds2);
 
 /**
- * @brief                   This function replace the bins map and parameters ( alpha, gamma, ln_gamma, n ) of the first sketch with the ones in the second sketch
- * @param dds1              Parameters of first sketch
- * @param dds2              Parameters of second sketch
- * @return                  0 success
+ * @brief                This function replace the bins map and parameters ( alpha, gamma, ln_gamma, n ) of the first sketch with the ones in the second sketch
+ * @param dds1           Parameters of first sketch
+ * @param dds2           Parameters of second sketch
+ * @return               0 success
  */
 extern int DDS_replaceSketch(DDS_type *dds1, DDS_type *dds2);
 
+/**
+ * @brief               This function finalize the Gossip merge dividing each element by weight
+ * @param dds           The sketch
+ * @param weight
+ * @return              0 in case of success, -4 in case of bad sketch data structures
+ */
 extern int DDS_finalizeMerge(DDS_type *dds, double weight);

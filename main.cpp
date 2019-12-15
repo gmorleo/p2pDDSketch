@@ -26,6 +26,7 @@
 #include "ddsketch.h"
 #include "graph.h"
 
+#define BOLDMAGENTA "\033[1m\033[35m"
 #define BOLDRED     "\033[1m\033[31m"      /* Bold Red */
 #define GREEN       "\x1B[32m"
 #define RESET       "\033[0m"
@@ -34,42 +35,40 @@ using namespace std;
 using namespace std::chrono;
 namespace po = boost::program_options;
 
-const int           DEFAULT_DISTRIBUTION_TYPE = 1;
-const double        DEFAULT_MEAN = 2;
-const double        DEFAULT_STDDEV = 3;
-const long          DEFAULT_NI = 10000000;
-const string        DEFAULT_FILENAME = "../normal_mean_2_stdev_3.csv";
-const string        DEFAULT_OUTPUT_FILE = "out.txt";
-const uint32_t      DEFAULT_DOMAIN_SIZE = 1048575;
-const int           DEFAULT_GRAPH_TYPE = 2;
-const int           DEFAULT_PEERS = 1000;
-const int           DEFAULT_FAN_OUT = 5;
-const double        DEFAULT_CONVERGENCE_THRESHOLD = 0.0001;
-const int           DEFAULT_CONVERGENCE_LIMIT = 3;
-const int           DEFAULT_ROUND_TO_EXECUTE = -1;
-const int           DEFAULT_OFFSET = 1073741824; //2^31/2
-const int           DEFAULT_BIN_LIMIT = 500;
-const float         DEFAULT_ALPHA = 0.008;
+const int               DEFAULT_DISTRIBUTION_TYPE = 1;
+const double            DEFAULT_MEAN = 2;
+const double            DEFAULT_STDDEV = 3;
+const long              DEFAULT_NI = 10000000;
+const uint32_t          DEFAULT_DOMAIN_SIZE = 1048575;
+const int               DEFAULT_GRAPH_TYPE = 2;
+const int               DEFAULT_PEERS = 1000;
+const int               DEFAULT_FAN_OUT = 5;
+const double            DEFAULT_CONVERGENCE_THRESHOLD = 0.0001;
+const int               DEFAULT_CONVERGENCE_LIMIT = 3;
+const int               DEFAULT_ROUND_TO_EXECUTE = -1;
+const int               DEFAULT_OFFSET = 1073741824; //2^31/2
+const int               DEFAULT_BIN_LIMIT = 500;
+const float             DEFAULT_ALPHA = 0.008;
 
 struct Params {
     /// Number of element
     long        ni;
     /// Distribution type
-    int distr_type;
+    int         distrType;
     /// Normal distribution Mean
-    double mean;
+    double      mean;
     /// Normal distribution Stddev
-    double stddev;
+    double      stddev;
     /// Exponential distribution lambda
-    double lambda;
+    double      lambda;
     /// Uniform real distribution a
-    double a;
+    double      a;
     /// Uniform real distribution b
-    double b;
-    /// Custom seed t
-    double seed;
+    double      b;
+    /// Random number generator seed
+    double      seed;
     /// Name of dataset
-    string      dataset_name;
+    string      datasetName;
     /// Number of possible distinct items
     uint32_t    domainSize;
     /// Graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
@@ -88,12 +87,14 @@ struct Params {
     bool        outputOnFile;
     /// Output file to redirect stdout
     string      outputFilename;
-    /// used to allow the skecth storing both positive, 0 and negative values
+    /// Used to allow the skecth storing both positive, 0 and negative values
     int         offset;
-    /// maximum number of bins
-    int         bin_limit;
-    /// this parameter defines alpha-accuracy of a q-quantile
+    /// Maximum number of bins
+    int         binLimit;
+    /// This parameter defines alpha-accuracy of a q-quantile
     double      alpha;
+    /// Vector of desired quantile
+    vector<double> q;
 };
 
 /**
@@ -124,19 +125,19 @@ int parse(int argc, char** argv, Params* params);
 
 /**
  * @brief                   This function computes the dimension of the dataset
- * @param name_file         Name of dataset
+ * @param nameFile         Name of dataset
  * @param row               Where the number of row is stored
  * @return                  0 in case of success, -3 in case of file error
  */
-int getDatasetSize(const string &name_file, long &rows);
+int getDatasetSize(const string &nameFile, long &rows);
 
 /**
  * @brief                   This function loads the dataset into an array
- * @param name_file         Name of dataset
+ * @param nameFile         Name of dataset
  * @param dataset           Array
  * @return                  An array containing the whole dataset
  */
-int loadDataset(const string &name_file, double *dataset);
+int loadDataset(const string &nameFile, double *dataset);
 
 /**
  * @brief                   This function generate a dataset according the input distribution
@@ -195,7 +196,7 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph);
  * @param dimestimate
  * @return                  0 success, -4 sketch error, -9 null pointer error
  */
-int distributedFinalizeCommunication(Params* params, DDS_type** dds, double* dimestimate);
+int distributedFinalizeCommunication(Params* params, DDS_type** dds, double* weight);
 
 /**
  * @brief                   This function computes the quantile
@@ -205,7 +206,7 @@ int distributedFinalizeCommunication(Params* params, DDS_type** dds, double* dim
  * @param output            Result of the test
  * @return                  0 in case of success, -4 in case of bad sketch data structure, -6 in case of q isn't in the [0,1] range -9 in case of bad data structure
  */
-int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &output);
+int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &result, const vector<double>& q) ;
 
 high_resolution_clock::time_point t1, t2;
 
@@ -216,7 +217,7 @@ int main(int argc, char **argv) {
     int returnValue = -1;
 
     ofstream out;
-    stringstream output;
+    stringstream result;
 
     Params *params = nullptr;
     DDS_type** dds = nullptr;
@@ -241,9 +242,6 @@ int main(int argc, char **argv) {
             goto ON_EXIT;
         }
     }
-/*
-    params->outputFilename = DEFAULT_OUTPUT_FILE;
-    params->outputOnFile = true;*/
 
     /*** Open file for output ***/
     if (params->outputOnFile) {
@@ -254,6 +252,8 @@ int main(int argc, char **argv) {
             goto ON_EXIT;
         }
     }
+
+    /*** Print algorithm parameters ***/
 
     if(!params->outputOnFile) {
         cout << BOLDRED << "\nPARAMETERS:\n" << RESET;
@@ -270,8 +270,10 @@ int main(int argc, char **argv) {
         goto ON_EXIT;
     }
 
-    if ( !params->dataset_name.empty()) {
-        returnValue = loadDataset(params->dataset_name, dataset);
+    /*** Load or generate Dataset ***/
+
+    if ( !params->datasetName.empty()) {
+        returnValue = loadDataset(params->datasetName, dataset);
         if (returnValue) {
             goto ON_EXIT;
         }
@@ -318,36 +320,36 @@ int main(int argc, char **argv) {
     /*** Distributed computation ***/
     returnValue = distributedInitializeSketch(params, dds);
     if (returnValue) {
-        cout << "Error with the add" << endl;
+        cout << BOLDMAGENTA << "Error initializing sketch" << RESET << endl;
         goto ON_EXIT;
     }
 
     /*** Distributed computation ***/
     returnValue = distributedAdd(params, dds, dataset, peerLastItem);
     if (returnValue) {
-        cout << "Error with the add" << endl;
+        cout << BOLDMAGENTA << "Error adding items" << RESET << endl;
         goto ON_EXIT;
     }
 
     /*** Distributed communication ***/
     returnValue = distributedCommunication(params, dds, graph);
     if ( returnValue < 0 ) {
-        cout << "Error during the distributed communication" << endl;
+        cout << BOLDMAGENTA << "Error distributed communication" << RESET << endl;
         goto ON_EXIT;
     }
 
     /*** Quantile computing ***/
-    output.str("");
-    returnValue = testQuantile(dds[0], dataset, params->ni, output);
+    result.str("");
+    returnValue = testQuantile(dds[0], dataset, params->ni, result, params->q);
     if ( returnValue < 0 ) {
-        cout << "Error during the computation of quantile" << endl;
+        cout << BOLDMAGENTA << "Error during the computation of quantile" << RESET << endl;
         goto ON_EXIT;
     }
 
     if(!params->outputOnFile) {
-        cout << output.str();
+        cout << result.str();
     } else {
-        out << output.str();
+        out << result.str();
     }
 
     ON_EXIT:
@@ -372,12 +374,13 @@ int main(int argc, char **argv) {
     }
 
     if ( graph != nullptr ) {
-        igraph_destroy(graph);
+        igraph_destroy(graph), graph = nullptr;
     }
 
     if (out.is_open()) {
         out.close();
     }
+
     return returnValue;
 }
 
@@ -400,7 +403,7 @@ int distributedInitializeSketch(Params* params, DDS_type** dds) {
     for(int peerID = 0; peerID < params->peers; peerID++) {
 
         // Initialization peers sketches
-        dds[peerID] = DDS_Init(params->offset, params->bin_limit, params->alpha);
+        dds[peerID] = DDS_Init(params->offset, params->binLimit, params->alpha);
         if (!dds[peerID]) {
             return MEMORY_ERROR;
         }
@@ -457,7 +460,7 @@ int distributedAdd(Params* params, DDS_type** dds, double* dataset, const long* 
     return returnValue;
 }
 
-int distributedFinalizeCommunication(Params* params, DDS_type** dds, double* dimestimate) {
+int distributedFinalizeCommunication(Params* params, DDS_type** dds, double* weight) {
 
     if (!params) {
         printError(PARAM_ERROR, __FUNCTION__);
@@ -469,16 +472,16 @@ int distributedFinalizeCommunication(Params* params, DDS_type** dds, double* dim
         return SKETCH_ERROR;
     }
 
-    if (!dimestimate) {
+    if (!weight) {
         printError(NULL_POINTER_ERROR, __FUNCTION__);
         return NULL_POINTER_ERROR;
     }
 
     int returnValue = -1;
 
-    // Finalize the sum by dividing each value by dimestimate[peerID]
+    // Finalize the sum by dividing each value by weight[peerID]
     for(int peerID = 0; peerID < params->peers; peerID++){
-        returnValue = DDS_finalizeMerge(dds[peerID], dimestimate[peerID]);
+        returnValue = DDS_finalizeMerge(dds[peerID], weight[peerID]);
         if (returnValue) {
             return returnValue;
         }
@@ -508,28 +511,28 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
 
     int returnValue = -1;
 
-    double* dimestimate = nullptr;
-    double* prevestimate = nullptr;
+    double* weight = nullptr;
+    double* prevWeight = nullptr;
     bool* converged = nullptr;
     int* convRounds = nullptr;
 
-    double comunication_time;
+    double comunicationTime;
     int rounds = 0;
     // Number of peers that have not reached convergence
-    int Numberofconverged = params->peers;
+    int activePeer = params->peers;
 
     // Weight for sum only one peer is setted to 1
-    dimestimate = new (nothrow) double[params->peers]();
-    if(!dimestimate) {
+    weight = new (nothrow) double[params->peers]();
+    if(!weight) {
         printError(MEMORY_ERROR, __FUNCTION__);
         returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
-    dimestimate[0] = 1;
+    weight[0] = 1;
 
     // Values at round t-1
-    prevestimate = new (nothrow) double[params->peers]();
-    if(!prevestimate) {
+    prevWeight = new (nothrow) double[params->peers]();
+    if(!prevWeight) {
         printError(MEMORY_ERROR, __FUNCTION__);
         returnValue = MEMORY_ERROR;
         goto ON_EXIT;
@@ -561,9 +564,9 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
 
     startTheClock();
     /*** Merge information about agglomeration ***/
-    while( (params->roundsToExecute < 0 && Numberofconverged) || params->roundsToExecute > 0) {
+    while((params->roundsToExecute < 0 && activePeer) || params->roundsToExecute > 0) {
 
-        memcpy(prevestimate, dimestimate, params->peers * sizeof(double));
+        memcpy(prevWeight, weight, params->peers * sizeof(double));
 
         for (int peerID = 0; peerID < params->peers; peerID++) {
 
@@ -594,9 +597,9 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
                     goto ON_EXIT;
                 }
 
-                double mean = (dimestimate[peerID] + dimestimate[neighborID]) / 2;
-                dimestimate[peerID] = mean;
-                dimestimate[neighborID] = mean;
+                double mean = (weight[peerID] + weight[neighborID]) / 2;
+                weight[peerID] = mean;
+                weight[neighborID] = mean;
             }
 
             igraph_vector_destroy(&neighbors);
@@ -612,8 +615,8 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
 
                 // Check local convergence
                 bool dimestimateconv;
-                if(prevestimate[peerID])
-                    dimestimateconv = fabs((prevestimate[peerID] - dimestimate[peerID]) / prevestimate[peerID]) < params->convThreshold;
+                if(prevWeight[peerID])
+                    dimestimateconv = fabs((prevWeight[peerID] - weight[peerID]) / prevWeight[peerID]) < params->convThreshold;
                 else
                     dimestimateconv = false;
 
@@ -629,36 +632,36 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
                 converged[peerID] = (convRounds[peerID] >= params->convLimit);
                 if(converged[peerID]){
                     //printf("peer %d rounds before convergence: %d\n", peerID, rounds + 1);
-                    Numberofconverged --;
+                    activePeer --;
                 }
             }
         }
         rounds++;
-        cout << GREEN <<" Active peers: " << Numberofconverged << " - Rounds: " << rounds << RESET << endl;
+        cout << GREEN << " Active peers: " << activePeer << " - Rounds: " << rounds << RESET << endl;
         params->roundsToExecute--;
     }
-    comunication_time = stopTheClock();
-    cout <<"\nTime (seconds) required to reach convergence: " << comunication_time << "\n";
+    comunicationTime = stopTheClock();
+    cout << "\nTime (seconds) required to reach convergence: " << comunicationTime << "\n";
 
-    returnValue = distributedFinalizeCommunication(params, dds, dimestimate);
+    returnValue = distributedFinalizeCommunication(params, dds, weight);
     if (returnValue) {
         goto ON_EXIT;
     }
 
-    cout << "Estimate of peers number: " << 1/dimestimate[0] << endl;
+    cout << "Estimate of peers number: " << 1/weight[0] << endl;
 
     ON_EXIT:
 
-    if (dimestimate != nullptr) {
-        delete[] dimestimate, dimestimate = nullptr;
+    if (weight != nullptr) {
+        delete[] weight, weight = nullptr;
     }
-    if ( prevestimate != nullptr ) {
-        delete[] prevestimate, prevestimate = nullptr;
+    if (prevWeight != nullptr ) {
+        delete[] prevWeight, prevWeight = nullptr;
     }
     if ( converged != nullptr ) {
         delete[] converged, converged = nullptr;
     }
-    if ( convRounds != nullptr ) {
+    if (convRounds != nullptr ) {
         delete[] convRounds, convRounds = nullptr;
     }
 
@@ -735,7 +738,7 @@ Params* init() {
         return nullptr;
     }
 
-    params->distr_type = DEFAULT_DISTRIBUTION_TYPE;
+    params->distrType = DEFAULT_DISTRIBUTION_TYPE;
     params->mean = DEFAULT_MEAN;
     params->stddev = DEFAULT_STDDEV;
     params->ni = DEFAULT_NI;
@@ -750,42 +753,54 @@ Params* init() {
     params->outputOnFile = !params->outputFilename.empty();
 
     params->offset = DEFAULT_OFFSET;
-    params->bin_limit = DEFAULT_BIN_LIMIT;
+    params->binLimit = DEFAULT_BIN_LIMIT;
     params->alpha = DEFAULT_ALPHA;
+    params->q.insert( params->q.begin(),{0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99});
 
     return params;
 }
 
-void conflicting_options(const po::variables_map& vm, const char* opt1, const char* opt2)
+int conflicting_options(const po::variables_map& vm, const char* opt1, const char* opt2)
 {
-    if (vm.count(opt1) && !vm[opt1].defaulted() && vm.count(opt2) && !vm[opt2].defaulted())
-        throw logic_error(string("Conflicting options '")
-                          + opt1 + "' and '" + opt2 + "'.");
+    if (vm.count(opt1) && !vm[opt1].defaulted() && vm.count(opt2) && !vm[opt2].defaulted()) {
+        cout << "Conflicting options '" << opt1 << "' and '" << opt2 << "'." << endl;
+        return CONFLICTING_OPTIONS;
+    } else {
+        return SUCCESS;
+    }
 }
 
 int parse(int argc, char **argv, Params* params) {
 
+    int returnvalue = -1;
     po::options_description desc{"Options"};
     try
     {
         desc.add_options()
-                ("help,h", "produce help message")
-                ("p", po::value<int>(&params->peers), "number of peers")
+                ("help", "produce help message")
+                ("peer", po::value<int>(&params->peers), "number of peers")
                 ("f", po::value<int>(&params->fanOut),"fan-out of peers")
-                ("g", po::value<int>(&params->graphType), "graph type: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular")
+                ("graph", po::value<int>(&params->graphType), "graph type: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular")
                 ("ct", po::value<double>(&params->convThreshold), "convergence tolerance")
                 ("cr", po::value<int>(&params->convLimit), "number of consecutive rounds in which convergence must be satisfied")
                 ("out", po::value<string>(&params->outputFilename), "output filename, if specified a file with this name containing all of the peers stats is written")
                 ("re", po::value<int>(&params->roundsToExecute), "number of rounds to execute")
                 ("alpha", po::value<double>(&params->alpha), "accuracy for DDSketch")
                 ("off", po::value<int>(&params->offset), "offset for DDSketch")
-                ("bl",po::value<int>(&params->bin_limit), "bins limit for DDSketch")
-                ("dataset",po::value<string>(&params->dataset_name), "input (only one can be selected): dataset name")
+                ("bl", po::value<int>(&params->binLimit), "bins limit for DDSketch")
+                ("dataset", po::value<string>(&params->datasetName), "input (only one can be selected): dataset name")
                 ("normal",po::value<vector<double>>()->multitoken()->zero_tokens(), "input (only one can be selected): normal distribution, required mean and stdev: --normal mean stddev")
                 ("exponential",po::value<double>(&params->lambda), "input (only one can be selected): exponential distribution, required lambda: --exponential lambda")
-                ("uniform",po::value<vector<double>>()->multitoken()->zero_tokens(), "input (only one can be selected): uniform real distribution, required a and b: --normal a b");
+                ("uniform",po::value<vector<double>>()->multitoken()->zero_tokens(), "input (only one can be selected): uniform real distribution, required a and b: --normal a b")
+                ("seed",po::value<double>(&params->seed), "random number generator seed")
+                ("q",po::value<vector<double>>()->multitoken()->zero_tokens(), "quantile list, value between [0,1]");
+
         po::variables_map vm;
-        store(parse_command_line(argc, argv, desc), vm);
+        po::command_line_parser parser{argc, argv};
+        parser.options(desc).allow_unregistered().style(po::command_line_style::allow_long | po::command_line_style::long_allow_next);
+        po::parsed_options parsed_options = parser.run();
+        store(parsed_options, vm);
+
         notify(vm);
 
         if (vm.count("help")) {
@@ -796,15 +811,51 @@ int parse(int argc, char **argv, Params* params) {
         if (vm.count("out"))
             params->outputOnFile = true;
 
+        returnvalue = conflicting_options(vm, "normal", "exponential");
+        if (returnvalue) {
+            printError(CONFLICTING_OPTIONS,__FUNCTION__);
+            return returnvalue;
+        }
+
+        returnvalue = conflicting_options(vm, "normal", "uniform");
+        if (returnvalue) {
+            printError(CONFLICTING_OPTIONS,__FUNCTION__);
+            return returnvalue;
+        }
+
+        returnvalue = conflicting_options(vm, "exponential", "uniform");
+        if (returnvalue) {
+            printError(CONFLICTING_OPTIONS,__FUNCTION__);
+            return returnvalue;
+        }
+
+        returnvalue = conflicting_options(vm, "dataset", "normal");
+        if (returnvalue) {
+            printError(CONFLICTING_OPTIONS,__FUNCTION__);
+            return returnvalue;
+        }
+
+        returnvalue = conflicting_options(vm, "dataset", "exponential");
+        if (returnvalue) {
+            printError(CONFLICTING_OPTIONS,__FUNCTION__);
+            return returnvalue;
+        }
+
+        returnvalue = conflicting_options(vm, "dataset", "uniform");
+        if (returnvalue) {
+            printError(CONFLICTING_OPTIONS,__FUNCTION__);
+            return returnvalue;
+        }
+
         if (vm.count("dataset")) {
-            int returnValue = getDatasetSize(params->dataset_name, params->ni);
+            int returnValue = getDatasetSize(params->datasetName, params->ni);
             if (returnValue) {
                 return returnValue;
             }
         }
 
         if (vm.count("normal")) {
-            params->distr_type = 1;
+            params->distrType = 1;
             vector<double> opt = vm["normal"].as<vector<double>>();
             if (opt.size() == 2) {
                 params->mean = opt[0];
@@ -815,9 +866,13 @@ int parse(int argc, char **argv, Params* params) {
             }
         }
 
+        if (vm.count("exponential")) {
+            params->distrType = 2;
+        }
+
         if (vm.count("uniform")) {
-            params->distr_type = 1;
-            vector<double> opt = vm["normal"].as<vector<double>>();
+            params->distrType = 3;
+            vector<double> opt = vm["uniform"].as<vector<double>>();
             if (opt.size() == 2) {
                 params->a = opt[0];
                 params->b = opt[1];
@@ -827,12 +882,18 @@ int parse(int argc, char **argv, Params* params) {
             }
         }
 
-        conflicting_options(vm, "normal", "exponential");
-        conflicting_options(vm, "normal", "uniform");
-        conflicting_options(vm, "exponential", "uniform");
-        conflicting_options(vm, "dataset", "normal");
-        conflicting_options(vm, "dataset", "exponential");
-        conflicting_options(vm, "dataset", "uniform");
+        if (vm.count("q")) {
+            params->q.clear();
+            vector<double> opt = vm["q"].as<vector<double>>();
+            for (double q: opt) {
+                if (q < 0 || q > 1 ) {
+                    printError(QUANTILE_ERROR, __FUNCTION__);
+                    return QUANTILE_ERROR;
+                } else {
+                    params->q.insert(params->q.end(), q);
+                }
+            }
+        }
 
     }
     catch (const po::error &ex)
@@ -855,11 +916,11 @@ double stopTheClock() {
     return time_span.count();
 }
 
-int getDatasetSize(const string &name_file, long &rows) {
+int getDatasetSize(const string &nameFile, long &rows) {
 
     rows = 0;
 
-    ifstream inputFile(name_file);
+    ifstream inputFile(nameFile);
     string line;
     if(inputFile.is_open()){
         while (getline(inputFile, line))
@@ -872,14 +933,14 @@ int getDatasetSize(const string &name_file, long &rows) {
     return SUCCESS;
 }
 
-int loadDataset(const string &name_file, double *dataset) {
+int loadDataset(const string &nameFile, double *dataset) {
 
     if (!dataset) {
         printError(NULL_POINTER_ERROR, __FUNCTION__);
         return NULL_POINTER_ERROR;
     }
 
-    ifstream inputFile(name_file);
+    ifstream inputFile(nameFile);
     string line;
     int row = 0;
 
@@ -925,17 +986,17 @@ int generateDataset(Params* params, double *dataset) {
         generator.seed(params->seed);
     }
 
-    if ( params->distr_type == 1 ) {
+    if (params->distrType == 1 ) {
         normal_distribution<double> normal(params->mean,params->stddev);
         for (long i = 0; i < params->ni; i++) {
             dataset[i] = normal(generator);
         }
-    } else if ( params->distr_type == 2 ) {
+    } else if (params->distrType == 2 ) {
         exponential_distribution<double> exponential(params->lambda);
         for (long i = 0; i < params->ni; i++) {
             dataset[i] = exponential(generator);
         }
-    } else if ( params->distr_type == 3 ) {
+    } else if (params->distrType == 3 ) {
         uniform_real_distribution<double> uniform_real(params->a, params->b);
         for (long i = 0; i < params->ni; i++) {
             dataset[i] = uniform_real(generator);
@@ -946,9 +1007,9 @@ int generateDataset(Params* params, double *dataset) {
 
 }
 
-int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &output) {
+int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &result, const vector<double>& quantileList) {
 
-    output << "\nTest quantile with alpha=" << dds->alpha << endl << endl;
+    result << "\nTest quantile with alpha=" << dds->alpha << endl << endl;
 
     if(!dds){
         printError(SKETCH_ERROR, __FUNCTION__);
@@ -962,35 +1023,29 @@ int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &ou
 
     int returnValue = -1;
 
-    // Determine the quantile
-    float q[] = { 0.01, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.99};
-    int n_q = 11;
-
-    output  << string(60, '-') << endl
+    result  << string(60, '-') << endl
             << "|" << setw(10) << "quantile" << "|" << setw(15) << "estimate" << "|" << setw(15) << "real" << "|"  << setw(15)<< "error" << "|" << endl
             << string(60, '-') << endl;
 
-    for ( int i = 0; i < n_q; i++ ) {
-
-        int idx = floor(1+q[i]*double(n_element-1));
+    for(double q : quantileList) {
+        int idx = floor(1+q*double(n_element-1));
         // determine the correct answer
         // i.e., the number stored at the index (idx-1) in the sorted permutation of the vector
         // note that we are not sorting the vector, we are using the quickselect() algorithm
         // which in C++ is available as std::nth_element
         nth_element(stream, stream + (idx-1), stream +  n_element);
         double quantile;
-        returnValue = DDS_GetQuantile(dds, q[i], quantile);
+        returnValue = DDS_GetQuantile(dds, q, quantile);
         if (returnValue < 0 ) {
             return returnValue;
         }
 
         double error = abs((quantile-stream[idx-1])/stream[idx-1]);
 
-        output << "|" << setw(10) << q[i]<< "|" << setw(15) << quantile << "|" << setw(15) << stream[idx-1] << "|"  << setw(15)<< error << "|" << endl;
-
+        result << "|" << setw(10) << q<< "|" << setw(15) << quantile << "|" << setw(15) << stream[idx-1] << "|"  << setw(15)<< error << "|" << endl;
     }
 
-    output << string(60, '-') << endl;
+    result << string(60, '-') << endl;
 
     return  returnValue;
 }
@@ -998,25 +1053,25 @@ int testQuantile(DDS_type *dds, double* stream, long n_element, stringstream &ou
 string printParameters(Params* params){
 
     stringstream parameters;
-    if (!params->dataset_name.empty()) {
-        parameters << "dataset = "    << params->dataset_name << endl;
-    } else if ( params->distr_type == 1 ) {
+    if (!params->datasetName.empty()) {
+        parameters << "dataset = " << params->datasetName << endl;
+    } else if (params->distrType == 1 ) {
         parameters << "distribution type = normal with mean = " << params->mean << " and stddev = " << params->stddev << endl;
-    } else if ( params->distr_type == 2 ) {
+    } else if (params->distrType == 2 ) {
         parameters << "distribution type = exponential with lambda = " << params->lambda<< endl;
-    } else if ( params->distr_type == 3 ) {
+    } else if (params->distrType == 3 ) {
         parameters << "distribution type = uniform real with a = " << params->a << " and b = " << params->b << endl;
     }
 
     parameters << "n° points = "  << params->ni << "\n"
                << "graph type = " << printGraphType(params->graphType)
-               << "peers = " << params->peers << "\n"
-               << "fan-out = " << params->fanOut << "\n"
-               << "local convergence tolerance = "<< params->convThreshold << "\n"
-               << "number of consecutive rounds in which a peer must locally converge = "<< params->convLimit << "\n"
-               << "alpha = " << params->alpha << "\n"
-               << "offset = " << params->offset << "\n"
-               << "bin_limit = " << params->bin_limit << "\n";
+                                  << "peers = " << params->peers << "\n"
+                                  << "fan-out = " << params->fanOut << "\n"
+                                  << "local convergence tolerance = " << params->convThreshold << "\n"
+                                  << "number of consecutive rounds in which a peer must locally converge = " << params->convLimit << "\n"
+                                  << "alpha = " << params->alpha << "\n"
+                                  << "offset = " << params->offset << "\n"
+                                  << "binLimit = " << params->binLimit << "\n";
 
     return parameters.str();
 }

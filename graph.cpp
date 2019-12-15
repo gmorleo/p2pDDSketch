@@ -199,7 +199,7 @@ string printGraphProperties(igraph_t *graph) {
     igraph_degree(graph, &result, igraph_vss_all(), IGRAPH_ALL, IGRAPH_NO_LOOPS);
     igraph_vector_minmax(&result, &mindeg, &maxdeg);
 
-    string_result << "Graph properties:\nminimum degree = "  <<  mindeg << ";\nmaximum degree = " << maxdeg << ";\n\n";
+    string_result << "Graph properties: minimum degree = "  <<  mindeg << " and maximum degree = " << maxdeg << ";\n\n";
 
     igraph_vector_destroy(&result);
 
