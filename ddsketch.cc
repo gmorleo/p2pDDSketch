@@ -1001,7 +1001,7 @@ int DDS_finalizeMerge(DDS_type *dds, double weight) {
     return SUCCESS;
 }
 
-int DDS_replaceBinMap(DDS_type *dds1, DDS_type *dds2) {
+int DDS_replaceSketch(DDS_type *dds1, DDS_type *dds2) {
 
     if(!dds1 || !dds2){
         printError(SKETCH_ERROR, __FUNCTION__);

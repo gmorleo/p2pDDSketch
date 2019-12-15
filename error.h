@@ -22,6 +22,7 @@ const int UNKNOWN_GRAPH_TYPE = -11;
 const int PARAM_ERROR = -12;
 const int USAGE_ERROR = -13;
 const int DATASET_DIVISION_ERROR = -14;
+const int EXIT = -15;
 
 using namespace std;
 

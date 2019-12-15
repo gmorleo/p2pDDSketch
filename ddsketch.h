@@ -169,7 +169,7 @@ extern int DDS_AddCollapse(DDS_type *dds, double item);
 extern int DDS_Collapse(DDS_type *dds);
 
 /**
- * \brief               This function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1 otherwise it simply decrements by 1 the bucket's counter
+ * @brief               This function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1 otherwise it simply decrements by 1 the bucket's counter
  * @param dds           The sketch
  * @param item          The input value
  * @return              0 in case of success, -4 in case of bad sketch data structures
@@ -177,7 +177,7 @@ extern int DDS_Collapse(DDS_type *dds);
 extern int DDS_DeleteCollapse(DDS_type *dds, double item);
 
 /**
- * \brief               Merge function: merges the bins in dds1 with the bins of dds2; dds1 is the result of the merge operation
+ * @brief               Merge function: merges the bins in dds1 with the bins of dds2; dds1 is the result of the merge operation
  * @param dds1          The sketch
  * @param dds2          The sketch
  * @return              0 in case of success, -4 in case of bad sketch data structures
@@ -202,7 +202,7 @@ extern int DDS_AddCollapseLastBucket(DDS_type *dds, double item);
 extern int DDS_CollapseLastBucket(DDS_type *dds);
 
 /**
- * \brief               This function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1 otherwise it simply decrements by 1 the bucket's counter
+ * @brief               This function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1 otherwise it simply decrements by 1 the bucket's counter
  * @param dds           The sketch
  * @param item          The input value
  * @return              0 in case of success, -4 in case of bad sketch data structures
@@ -210,7 +210,7 @@ extern int DDS_CollapseLastBucket(DDS_type *dds);
 extern int DDS_DeleteCollapseLastBucket(DDS_type *dds, double item);
 
 /**
- * \brief               Merge function: merges the bins in dds1 with the bins of dds2; dds1 is the result of the merge operation
+ * @brief               Merge function: merges the bins in dds1 with the bins of dds2; dds1 is the result of the merge operation
  * @param dds1          The sketch
  * @param dds2          The sketch
  * @return              0 in case of success, -4 in case of bad sketch data structures, -5 in case of the two sketches cannot be merged
@@ -235,7 +235,7 @@ extern int DDS_AddCollapseFirstBucket(DDS_type *dds, double item);
 extern int DDS_CollapseFirstBucket(DDS_type *dds);
 
 /**
- * \brief               This function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1 otherwise it simply decrements by 1 the bucket's counter
+ * @brief               This function deletes the bucket with index associated with the value (item) if it exists and its value is equal to 1 otherwise it simply decrements by 1 the bucket's counter
  * @param dds           The sketch
  * @param item          The input value
  * @return              0 in case of success, -4 in case of bad sketch data structure
@@ -256,6 +256,6 @@ extern int DDS_MergeCollapseFirstBucket(DDS_type *dds1, DDS_type *dds2);
  * @param dds2              Parameters of second sketch
  * @return                  0 success
  */
-extern int DDS_replaceBinMap(DDS_type *dds1, DDS_type *dds2);
+extern int DDS_replaceSketch(DDS_type *dds1, DDS_type *dds2);
 
 extern int DDS_finalizeMerge(DDS_type *dds, double weight);

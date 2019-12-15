@@ -2,45 +2,43 @@
 // Created by giuseppe on 16/11/19.
 //
 
-#include <iostream>
-#include <sstream>
 #include "graph.h"
 
-int generateGeometricGraph(igraph_t &G_graph, igraph_integer_t n, igraph_real_t radius)
+int generateGeometricGraph(igraph_t *G_graph, igraph_integer_t n, igraph_real_t radius)
 {
 
     int returnValue = -1;
     igraph_bool_t connected;
 
     // generate a connected random graph using the geometric model
-    returnValue = igraph_grg_game(&G_graph, n, radius, 0, nullptr, nullptr);
+    returnValue = igraph_grg_game(G_graph, n, radius, 0, nullptr, nullptr);
     if (returnValue){
         printError(GRAPH_GENERATION_ERROR, __FUNCTION__);
         return GRAPH_GENERATION_ERROR;
     }
 
-    igraph_is_connected(&G_graph, &connected, IGRAPH_WEAK);
+    igraph_is_connected(G_graph, &connected, IGRAPH_WEAK);
     while(!connected){
-        igraph_destroy(&G_graph);
-        returnValue = igraph_grg_game(&G_graph, n, radius, 0, nullptr, nullptr);
+        igraph_destroy(G_graph);
+        returnValue = igraph_grg_game(G_graph, n, radius, 0, nullptr, nullptr);
         if (returnValue){
             printError(GRAPH_GENERATION_ERROR, __FUNCTION__);
             return GRAPH_GENERATION_ERROR;
         }
 
-        igraph_is_connected(&G_graph, &connected, IGRAPH_WEAK);
+        igraph_is_connected(G_graph, &connected, IGRAPH_WEAK);
     }
     return returnValue;
 }
 
-int generateBarabasiAlbertGraph(igraph_t &BA_graph, igraph_integer_t n, igraph_real_t power, igraph_integer_t m, igraph_real_t A)
+int generateBarabasiAlbertGraph(igraph_t *BA_graph, igraph_integer_t n, igraph_real_t power, igraph_integer_t m, igraph_real_t A)
 {
 
     int returnValue = -1;
     igraph_bool_t connected;
 
     // generate a connected random graph using the Barabasi-Albert model
-    returnValue = igraph_barabasi_game(/* graph=    */ &BA_graph,
+    returnValue = igraph_barabasi_game(/* graph=    */ BA_graph,
             /* n=        */ n,
             /* power=    */ power,
             /* m=        */ m,
@@ -56,10 +54,10 @@ int generateBarabasiAlbertGraph(igraph_t &BA_graph, igraph_integer_t n, igraph_r
     }
 
 
-    igraph_is_connected(&BA_graph, &connected, IGRAPH_WEAK);
+    igraph_is_connected(BA_graph, &connected, IGRAPH_WEAK);
     while(!connected){
-        igraph_destroy(&BA_graph);
-        returnValue = igraph_barabasi_game(/* graph=    */ &BA_graph,
+        igraph_destroy(BA_graph);
+        returnValue = igraph_barabasi_game(/* graph=    */ BA_graph,
                 /* n=        */ n,
                 /* power=    */ power,
                 /* m=        */ m,
@@ -74,69 +72,69 @@ int generateBarabasiAlbertGraph(igraph_t &BA_graph, igraph_integer_t n, igraph_r
             return GRAPH_GENERATION_ERROR;
         }
 
-        igraph_is_connected(&BA_graph, &connected, IGRAPH_WEAK);
+        igraph_is_connected(BA_graph, &connected, IGRAPH_WEAK);
     }
 
     return returnValue;
 }
 
 
-int generateErdosRenyiGraph(igraph_t &ER_graph, igraph_integer_t n, igraph_erdos_renyi_t type, igraph_real_t param)
+int generateErdosRenyiGraph(igraph_t *ER_graph, igraph_integer_t n, igraph_erdos_renyi_t type, igraph_real_t param)
 {
 
     int returnValue = -1;
     igraph_bool_t connected;
 
     // generate a connected random graph using the Erdos-Renyi model
-    returnValue = igraph_erdos_renyi_game(&ER_graph, type, n, param, IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+    returnValue = igraph_erdos_renyi_game(ER_graph, type, n, param, IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
     if (returnValue){
         printError(GRAPH_GENERATION_ERROR, __FUNCTION__);
         return GRAPH_GENERATION_ERROR;
     }
-    igraph_is_connected(&ER_graph, &connected, IGRAPH_WEAK);
+    igraph_is_connected(ER_graph, &connected, IGRAPH_WEAK);
     while(!connected){
-        igraph_destroy(&ER_graph);
-        returnValue = igraph_erdos_renyi_game(&ER_graph, type, n, param, IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
+        igraph_destroy(ER_graph);
+        returnValue = igraph_erdos_renyi_game(ER_graph, type, n, param, IGRAPH_UNDIRECTED, IGRAPH_NO_LOOPS);
         if (returnValue){
             printError(GRAPH_GENERATION_ERROR, __FUNCTION__);
             return GRAPH_GENERATION_ERROR;
         }
 
-        igraph_is_connected(&ER_graph, &connected, IGRAPH_WEAK);
+        igraph_is_connected(ER_graph, &connected, IGRAPH_WEAK);
     }
 
     return returnValue;
 }
 
-int generateRegularGraph(igraph_t &R_graph, igraph_integer_t n, igraph_integer_t k)
+int generateRegularGraph(igraph_t *R_graph, igraph_integer_t n, igraph_integer_t k)
 {
 
     int returnValue = -1;
     igraph_bool_t connected;
 
     // generate a connected regular random graph
-    returnValue = igraph_k_regular_game(&R_graph, n, k, IGRAPH_UNDIRECTED, 0);
+    returnValue = igraph_k_regular_game(R_graph, n, k, IGRAPH_UNDIRECTED, 0);
     if (returnValue){
         printError(GRAPH_GENERATION_ERROR, __FUNCTION__);
         return GRAPH_GENERATION_ERROR;
     }
 
-    igraph_is_connected(&R_graph, &connected, IGRAPH_WEAK);
+    igraph_is_connected(R_graph, &connected, IGRAPH_WEAK);
     while(!connected){
-        igraph_destroy(&R_graph);
-        returnValue = igraph_k_regular_game(&R_graph, n, k, IGRAPH_UNDIRECTED, 0);
+        igraph_destroy(R_graph);
+        returnValue = igraph_k_regular_game(R_graph, n, k, IGRAPH_UNDIRECTED, 0);
         if (returnValue){
             printError(GRAPH_GENERATION_ERROR, __FUNCTION__);
             return GRAPH_GENERATION_ERROR;
         }
 
-        igraph_is_connected(&R_graph, &connected, IGRAPH_WEAK);
+        igraph_is_connected(R_graph, &connected, IGRAPH_WEAK);
     }
 
     return returnValue;
 }
 
-int generateRandomGraph(igraph_t &random_graph, int type, int n)
+int generateRandomGraph(igraph_t *random_graph, int type, int n)
 {
     int returnValue = -1;
 
@@ -163,10 +161,17 @@ int generateRandomGraph(igraph_t &random_graph, int type, int n)
     return returnValue;
 }
 
-
-int generateGraph(igraph_t &graph, int peers, int graphType) {
+igraph_t* generateGraph(int peers, int graphType) {
 
     int returnValue = -1;
+
+    igraph_t* graph = nullptr;
+    graph = new (nothrow) igraph_t;
+    if (!graph) {
+        printError(MEMORY_ERROR,__FUNCTION__);
+        return nullptr;
+    }
+
     // turn on attribute handling in igraph
     igraph_i_set_attribute_table(&igraph_cattribute_table);
 
@@ -175,12 +180,15 @@ int generateGraph(igraph_t &graph, int peers, int graphType) {
 
     // generate a connected random graph
     returnValue = generateRandomGraph(graph, graphType, peers);
+    if (returnValue) {
+        return nullptr;
+    }
 
-    return returnValue;
+    return graph;
 }
 
 
-string printGraphProperties(igraph_t &graph) {
+string printGraphProperties(igraph_t *graph) {
 
     igraph_vector_t result;
     igraph_real_t mindeg;
@@ -188,10 +196,10 @@ string printGraphProperties(igraph_t &graph) {
     stringstream string_result;
 
     igraph_vector_init(&result, 0);
-    igraph_degree(&graph, &result, igraph_vss_all(), IGRAPH_ALL, IGRAPH_NO_LOOPS);
+    igraph_degree(graph, &result, igraph_vss_all(), IGRAPH_ALL, IGRAPH_NO_LOOPS);
     igraph_vector_minmax(&result, &mindeg, &maxdeg);
 
-    string_result << "Graph properties:\nminimum degree= "  <<  mindeg << ";\nmaximum degree= " << maxdeg << ";\n\n";
+    string_result << "Graph properties:\nminimum degree = "  <<  mindeg << ";\nmaximum degree = " << maxdeg << ";\n\n";
 
     igraph_vector_destroy(&result);
 
