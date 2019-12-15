@@ -264,4 +264,4 @@ extern int DDS_replaceSketch(DDS_type *dds1, DDS_type *dds2);
  * @param weight
  * @return              0 in case of success, -4 in case of bad sketch data structures
  */
-extern int DDS_finalizeMerge(DDS_type *dds, double weight);
+extern int DDS_finalizeGossip(DDS_type *dds, double weight);

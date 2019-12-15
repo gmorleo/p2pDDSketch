@@ -211,13 +211,13 @@ string printGraphType(int type)
     string graph_name;
     switch (type) {
         case 1:
-            graph_name = "Geometric random graph\n";
+            graph_name = "Geometric random graph";
         case 2:
-            graph_name = "Barabasi-Albert random graph\n";
+            graph_name = "Barabasi-Albert random graph";
         case 3:
-            graph_name = "Erdos-Renyi random graph\n";
+            graph_name = "Erdos-Renyi random graph";
         case 4:
-            graph_name = "Regular random graph\n";
+            graph_name = "Regular random graph";
     }
 
     return graph_name;

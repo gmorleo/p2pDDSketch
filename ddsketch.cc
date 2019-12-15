@@ -986,7 +986,7 @@ int DDS_RemoveOffset(DDS_type* dds, int &i) {
     return SUCCESS;
 }
 
-int DDS_finalizeMerge(DDS_type *dds, double weight) {
+int DDS_finalizeGossip(DDS_type *dds, double weight) {
 
     if(!dds){
         printError(SKETCH_ERROR, __FUNCTION__);
