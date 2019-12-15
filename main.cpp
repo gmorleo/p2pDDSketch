@@ -50,7 +50,7 @@ const int               DEFAULT_OFFSET = 1073741824; //2^31/2
 const int               DEFAULT_BIN_LIMIT = 500;
 const float             DEFAULT_ALPHA = 0.008;
 
-struct Params {
+typedef struct Params {
     /// Number of element
     long        ni;
     /// Distribution type
@@ -95,7 +95,7 @@ struct Params {
     double      alpha;
     /// Vector of desired quantile
     vector<double> q;
-};
+} Params;
 
 /**
  * @brief                   This function sets the start time
@@ -608,7 +608,7 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
             }
         }
         rounds++;
-        cout << GREEN << " Active peers: " << activePeers << " - Rounds: " << rounds << RESET << endl;
+        cout << GREEN  << " Active peers: " << setw(6) << activePeers << " - Rounds: " << setw(2) << rounds << RESET << endl;
         params->roundsToExecute--;
     }
     comunicationTime = stopTheClock();
