@@ -251,7 +251,7 @@ extern int DDS_DeleteCollapseFirstBucket(DDS_type *dds, double item);
 extern int DDS_MergeCollapseFirstBucket(DDS_type *dds1, DDS_type *dds2);
 
 /**
- * @brief                This function replace the bins map and parameters ( alpha, gamma, ln_gamma, n ) of the first sketch with the ones in the second sketch
+ * @brief                This function replaces the dds2 sketch with the dds1 sketch
  * @param dds1           Parameters of first sketch
  * @param dds2           Parameters of second sketch
  * @return               0 success
@@ -259,9 +259,9 @@ extern int DDS_MergeCollapseFirstBucket(DDS_type *dds1, DDS_type *dds2);
 extern int DDS_replaceSketch(DDS_type *dds1, DDS_type *dds2);
 
 /**
- * @brief               This function finalize the Gossip merge dividing each element by weight
+ * @brief               This function finalizes the Gossip merge dividing each element by its weight
  * @param dds           The sketch
- * @param weight
+ * @param weight        The weight
  * @return              0 in case of success, -4 in case of bad sketch data structures
  */
 extern int DDS_finalizeGossip(DDS_type *dds, double weight);

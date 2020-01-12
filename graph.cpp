@@ -212,12 +212,16 @@ string printGraphType(int type)
     switch (type) {
         case 1:
             graph_name = "Geometric random graph";
+            break;
         case 2:
             graph_name = "Barabasi-Albert random graph";
+            break;
         case 3:
             graph_name = "Erdos-Renyi random graph";
+            break;
         case 4:
             graph_name = "Regular random graph";
+            break;
     }
 
     return graph_name;

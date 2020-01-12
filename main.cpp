@@ -46,12 +46,12 @@ const int               DEFAULT_FAN_OUT = 5;
 const double            DEFAULT_CONVERGENCE_THRESHOLD = 0.0001;
 const int               DEFAULT_CONVERGENCE_LIMIT = 3;
 const int               DEFAULT_ROUND_TO_EXECUTE = -1;
-const int               DEFAULT_OFFSET = 1073741824; //2^31/2
+const int               DEFAULT_OFFSET = 1073741824; //2^30
 const int               DEFAULT_BIN_LIMIT = 500;
 const float             DEFAULT_ALPHA = 0.008;
 
 typedef struct Params {
-    /// Number of element
+    /// Number of elements
     long        ni;
     /// Distribution type
     int         distrType;
@@ -73,9 +73,9 @@ typedef struct Params {
     uint32_t    domainSize;
     /// Graph distribution: 1 geometric 2 Barabasi-Albert 3 Erdos-Renyi 4 regular (clique)
     int         graphType;
-    /// Number of peer in the net
+    /// Number of peers in the net
     int         peers;
-    /// Fan-out of peers
+    /// Fan-out
     int         fanOut;
     /// Threshold to check the peer's convergence
     double      convThreshold;
@@ -93,7 +93,7 @@ typedef struct Params {
     int         binLimit;
     /// This parameter defines alpha-accuracy of a q-quantile
     double      alpha;
-    /// Vector of desired quantile
+    /// Vector of desired quantiles
     vector<double> q;
 } Params;
 
@@ -104,7 +104,7 @@ void startTheClock();
 
 /**
  * @brief                   This function returns the time between the start time and the end time
- * @return                  Total time between two times
+ * @return                  Total elapsed time (difference between end and start times)
  */
 double stopTheClock();
 
@@ -115,7 +115,7 @@ double stopTheClock();
 Params* init();
 
 /**
- * @brief                   This function parses command-line arguments
+ * @brief                   This function parses the command-line arguments
  * @param argc              Count of command line arguments
  * @param argv              Command line arguments
  * @param params            Params data structure
@@ -125,22 +125,22 @@ int parse(int argc, char** argv, Params* params);
 
 /**
  * @brief                   This function computes the dimension of the dataset
- * @param nameFile          Name of dataset
- * @param row               Where the number of row will be stored
+ * @param nameFile          Name of the dataset
+ * @param row               Where the number of rows will be stored
  * @return                  0 success, -3 file error
  */
 int getDatasetSize(const string &nameFile, long &rows);
 
 /**
  * @brief                   This function loads the dataset into an array
- * @param nameFile          Name of dataset
+ * @param nameFile          Name of the dataset
  * @param dataset           Array where the dataset will be stored
  * @return                  0 success, -3 file error, -9 null pointer error
  */
 int loadDataset(const string &nameFile, double *dataset);
 
 /**
- * @brief                   This function generate a dataset according the input distribution
+ * @brief                   This function generate a dataset according to the input distribution
  * @param                   Params data structure
  * @param dataset           Array where the dataset will be stored
  * @return                  0 success, -9 null pointer error, -12 param data structure error
@@ -171,7 +171,7 @@ string printParameters(Params* params);
 int distributedInitializeSketch(Params* params, DDS_type** dds);
 
 /**
- * @brief                   This function simulates a distributed computation, Each peer adds its parts of elements to its sketch.
+ * @brief                   This function simulates a distributed computation, Each peer adds its part of elements to its sketch.
  * @param params            Params data structure
  * @param dds               Array of sketch structures
  * @param dataset           Dataset
@@ -181,7 +181,7 @@ int distributedInitializeSketch(Params* params, DDS_type** dds);
 int distributedAdd(Params* params, DDS_type** dds, double* dataset, const long* peerLastItem);
 
 /**
- * @brief                   This function simulates a distributed communication.
+ * @brief                   This function simulates a distributed communication
  * @param params            Params data structure
  * @param dds               Array of sketch structures
  * @param graph             Network graph
@@ -193,26 +193,24 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph);
  * @brief                   This function finalize the simulation of the distributed communication
  * @param params            Params data structure
  * @param dds               Array of sketch structures
- * @param weight            Array of peers weight
+ * @param weight            Array of peer weights
  * @return                  0 success, -4 sketch error, -9 null pointer error
  */
 int distributedFinalizeCommunication(Params* params, DDS_type** dds, double* weight);
 
 /**
- * @brief                   This function computes the quantile
+ * @brief                   This function computes the quantiles
  * @param dds               Parameters of the sketch
  * @param stream            Vector that contains all the real values inserted
- * @param numberElements    Number of element
+ * @param numberElements    Number of elements
  * @param result            Result of the test
- * @return                  0 success, -4 bad sketch data structure, -6 q isn't in the [0,1] range -9 null pointer error
+ * @return                  0 success, -4 bad sketch data structure, -6 q is not in the [0,1] range -9 null pointer error
  */
 int testQuantile(DDS_type *dds, double* stream, long numberElements, stringstream &result, const vector<double>& q) ;
 
 high_resolution_clock::time_point t1, t2;
 
 int main(int argc, char **argv) {
-
-    // Declaration
 
     int returnValue = -1;
 
@@ -283,7 +281,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    /*** Compute last item for each peer***/
+    /*** Compute last item for each peer ***/
     peerLastItem = new (nothrow) long[params->peers]();
     if (!peerLastItem) {
         printError(MEMORY_ERROR, __FUNCTION__);
@@ -337,7 +335,7 @@ int main(int argc, char **argv) {
         goto ON_EXIT;
     }
 
-    /*** Quantile computing ***/
+    /*** Computing the quantiles ***/
     result.str("");
     returnValue = testQuantile(dds[0], dataset, params->ni, result, params->q);
     if ( returnValue < 0 ) {
@@ -490,13 +488,14 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
     int rounds = 0;
     int activePeers = params->peers;
 
-    // Weight for sum only one peer is setted to 1
+    // Weight for sum only one peer is set to 1
     weight = new (nothrow) double[params->peers]();
     if(!weight) {
         printError(MEMORY_ERROR, __FUNCTION__);
         returnValue = MEMORY_ERROR;
         goto ON_EXIT;
     }
+
     weight[0] = 1;
 
     // Values at round t-1
@@ -545,7 +544,7 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
             igraph_neighbors(graph, &neighbors, peerID, IGRAPH_ALL);
             long neighborsSize = igraph_vector_size(&neighbors);
             if (params->fanOut < neighborsSize && params->fanOut != -1) {
-                // randomly sample f adjacent vertices
+                // randomly sample fan-out adjacent vertices
                 igraph_vector_shuffle(&neighbors);
                 igraph_vector_remove_section(&neighbors, params->fanOut, neighborsSize);
             }
@@ -562,7 +561,7 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
                     goto ON_EXIT;
                 }
 
-                // Replace the sketch (dds2) with the new merged sketch
+                // Replace the sketch dds[neighborID] with the new merged sketch, i.e., dds[peerID]
                 returnValue = DDS_replaceSketch(dds[peerID], dds[neighborID]);
                 if (returnValue) {
                     goto ON_EXIT;
@@ -599,7 +598,7 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
 
                 //printf ("PeerID %d, round %d, convRound %d\n", peerID, rounds, convRounds[peerID]);
 
-                // If a peer reaches convergence, decrease by one the numberofconverged
+                // If a peer reaches convergence, decrease by one the number of peers that have reached the convergence
                 converged[peerID] = (convRounds[peerID] >= params->convLimit);
                 if(converged[peerID]){
                     //printf("peer %d rounds before convergence: %d\n", peerID, rounds + 1);
@@ -607,9 +606,11 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
                 }
             }
         }
+
         rounds++;
         cout << GREEN  << " Active peers: " << setw(6) << activePeers << " - Rounds: " << setw(2) << rounds << RESET << endl;
         params->roundsToExecute--;
+
     }
     comunicationTime = stopTheClock();
     cout << "\nTime (seconds) required to reach convergence: " << comunicationTime << "\n";
@@ -724,7 +725,7 @@ int computeLastItem(Params* params, long* peerLastItem) {
         return DATASET_DIVISION_ERROR;
     }
 
-    cout.flush();
+    //cout.flush();
 
     return SUCCESS;
 }

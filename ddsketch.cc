@@ -605,14 +605,13 @@ int DDS_MergeCollapse(DDS_type *dds1, DDS_type *dds2) {
         dds1->n += received_bin.second;
     }*/
 
-    // Mean
-    for ( auto & bin  : (*dds1->bins)) {
-        bin.second = bin.second/2;
+    for ( auto & bin  : (*dds2->bins)) {
+        (*(dds1->bins))[bin.first] += bin.second;
     }
 
     // Mean
-    for ( auto & bin  : (*dds2->bins)) {
-        (*(dds1->bins))[bin.first] += bin.second/2;
+    for ( auto & bin  : (*dds1->bins)) {
+        bin.second = bin.second/2;
     }
     
     //cout << endl << BOLDRED << "Size of first sketch after merge but before optional collapse: " << dds1->bins->size() << RESET << endl;
@@ -996,6 +995,7 @@ int DDS_finalizeGossip(DDS_type *dds, double weight) {
     for(auto & bin: (*dds->bins)) {
         bin.second = (bin.second/weight);
     }
+    
     dds->n = dds->n/weight;
 
     return SUCCESS;
