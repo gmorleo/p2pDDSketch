@@ -36,20 +36,21 @@ using namespace std::chrono;
 namespace po = boost::program_options;
 
 const int               DEFAULT_DISTRIBUTION_TYPE = 1;
-const double            DEFAULT_MEAN = 2;
+const double            DEFAULT_MEAN = 1;
 const double            DEFAULT_STDDEV = 3;
-const long              DEFAULT_NI = 10000000;
+const long              DEFAULT_NI = 508;
 const uint32_t          DEFAULT_DOMAIN_SIZE = 1048575;
 const int               DEFAULT_GRAPH_TYPE = 2;
-const int               DEFAULT_PEERS = 1000;
-const int               DEFAULT_FAN_OUT = 5;
+const int               DEFAULT_PEERS = 10;
+const int               DEFAULT_FAN_OUT = 1;
 const double            DEFAULT_CONVERGENCE_THRESHOLD = 0.0001;
 const int               DEFAULT_CONVERGENCE_LIMIT = 3;
-const int               DEFAULT_ROUND_TO_EXECUTE = -1;
+const int               DEFAULT_ROUND_TO_EXECUTE = 10;
 const int               DEFAULT_OFFSET = 1073741824; //2^30
 const int               DEFAULT_BIN_LIMIT = 500;
-const float             DEFAULT_ALPHA = 0.008;
-
+const float             DEFAULT_ALPHA = 0.000161167;
+// 0.000322334
+// 0.000161167
 typedef struct Params {
     /// Number of elements
     long        ni;
@@ -281,6 +282,8 @@ int main(int argc, char **argv) {
         }
     }
 
+    sort(dataset,dataset+params->ni);
+
     /*** Compute last item for each peer ***/
     peerLastItem = new (nothrow) long[params->peers]();
     if (!peerLastItem) {
@@ -328,12 +331,18 @@ int main(int argc, char **argv) {
         goto ON_EXIT;
     }
 
+/*    for ( int peerID = 0; peerID < 10; peerID++) {
+        DDS_PrintCSV(dds[peerID], "bins-peer-"+to_string(peerID)+".csv");
+    }*/
+
     /*** Distributed communication ***/
     returnValue = distributedCommunication(params, dds, graph);
     if ( returnValue < 0 ) {
         cout << BOLDMAGENTA << "Error distributed communication" << RESET << endl;
         goto ON_EXIT;
     }
+
+    DDS_PrintCSV(dds[0], "prova-nuova-non-ordinati.csv");
 
     /*** Computing the quantiles ***/
     result.str("");
@@ -342,6 +351,11 @@ int main(int argc, char **argv) {
         cout << BOLDMAGENTA << "Error during the quantiles computation" << RESET << endl;
         goto ON_EXIT;
     }
+
+
+    nth_element(dataset, dataset + (params->ni-1), dataset + params->ni);
+
+    cout << dataset[params->ni-1] << endl;
 
     if(!params->outputOnFile) {
         cout << result.str();
@@ -554,6 +568,9 @@ int distributedCommunication(Params* params, DDS_type** dds, igraph_t *graph) {
                 int neighborID = (int) VECTOR(neighbors)[i];
                 igraph_integer_t edgeID;
                 igraph_get_eid(graph, &edgeID, peerID, neighborID, IGRAPH_UNDIRECTED, 1);
+
+                //DDS_PrintCSV(dds, "prima.csv");
+
 
                 // Merge the sketches
                 returnValue = DDS_MergeCollapse(dds[peerID], dds[neighborID]);

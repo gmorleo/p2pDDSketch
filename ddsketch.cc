@@ -579,7 +579,7 @@ int DDS_MergeCollapse(DDS_type *dds1, DDS_type *dds2) {
     //cout << "Size before merge sketch1 = " << size1 << " sketch2 = " << size2 << endl;
 
     // Check if the bins have the same alpha
-    while (fabs(dds1->alpha - dds2->alpha) > 0.001){
+    while (fabs(dds1->alpha - dds2->alpha) > 0.0000001){
         if (dds1->alpha < dds2->alpha) {
             //cout << endl << BOLDRED << "Collapsing first sketch..." << RESET << endl;
             returnValue = DDS_Collapse(dds1);
@@ -856,7 +856,7 @@ int DDS_Collapse(DDS_type *dds) {
     dds->gamma = pow(dds->gamma, 2);
     dds->ln_gamma = log(dds->gamma);
     dds->alpha = (2 * dds->alpha) / (1 + pow(dds->alpha, 2));
-    dds->min_value = pow(dds->gamma,pow(2,29));;
+    dds->min_value = pow(dds->gamma,pow(2,29));
 
     // Create new bins map
     map<int, double> *new_bins = NULL;
